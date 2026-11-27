@@ -19,7 +19,9 @@ export type {
   DiagnosticSummaryEntry,
   DirectionAnalysisInput,
   TaskDirectionAssessment,
+  EndingPosture,
 } from "./contracts";
+export { ENDING_POSTURES, endingPostureSchema } from "./contracts";
 
 export {
   assessDirection,

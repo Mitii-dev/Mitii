@@ -59,6 +59,108 @@ describe("selectDecisionPlate", () => {
     );
   });
 
+  it("executes follow-up Start implementing it despite question ballot", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      turnKind: "follow_up",
+      message: "Start implementing it",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.grantProfile).toBe("agent_execute");
+    expect(plate.reasonCodes).toContain(
+      "plate_agent_mutation_despite_question",
+    );
+  });
+
+  it("executes agent follow-up continue/yes via weak fallback without posture", () => {
+    for (const message of ["continue", "yes", "go ahead", "do it"]) {
+      const plate = selectDecisionPlate({
+        mode: "agent",
+        primaryTaskIntent: "question",
+        clarityConfidence: "high",
+        planningHint: "none",
+        askUser: false,
+        turnKind: "follow_up",
+        message,
+      });
+      expect(plate.route).toBe("execute");
+      expect(plate.grantProfile).toBe("agent_execute");
+      expect(plate.reasonCodes).toContain("plate_agent_continue_as_execute");
+    }
+  });
+
+  it("executes proposal_ready + act stance via continuity bias", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      turnKind: "follow_up",
+      message: "you can continue but also add these checks",
+      interactionIntent: "act",
+      endingPosture: "proposal_ready",
+      priorRoute: "answer",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.reasonCodes).toContain("continuity_bias_execute");
+  });
+
+  it("keeps proposal_ready + pure question on research", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      turnKind: "follow_up",
+      message: "why did you pick notMatch first?",
+      interactionIntent: "question",
+      endingPosture: "proposal_ready",
+      priorRoute: "answer",
+    });
+    expect(plate.route).toBe("answer");
+    expect(plate.reasonCodes).toContain("continuity_bias_answer");
+  });
+
+  it("executes mixed act+question after proposal_ready", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "feature",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      turnKind: "follow_up",
+      message: "implement it, but should we also add jsonPath?",
+      interactionIntent: "act",
+      secondaryTaskIntents: ["question"],
+      endingPosture: "proposal_ready",
+      priorRoute: "answer",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.reasonCodes).toContain("continuity_bias_execute");
+  });
+
+  it("keeps ask-mode continue on research", () => {
+    const plate = selectDecisionPlate({
+      mode: "ask",
+      primaryTaskIntent: "question",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      turnKind: "follow_up",
+      message: "continue",
+      endingPosture: "proposal_ready",
+      interactionIntent: "act",
+    });
+    expect(plate.id).toBe("answer_research");
+    expect(plate.route).toBe("answer");
+  });
+
   it("executes agent clear/git cleanup asks misclassified as question", () => {
     const plate = selectDecisionPlate({
       mode: "agent",

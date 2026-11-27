@@ -18,7 +18,10 @@ const SYSTEM = `You are the Mitii direction Officer. Return ONLY JSON for a Task
 Decision Policy owns route/grant — you only assess.
 Required keys: schemaVersion(1), primaryTaskIntent, interactionIntent, difficulty, taskBand, risk, scope, planningHint, clarityConfidence, askUserSuggested, filesToRead, reasonCodes.
 primaryTaskIntent one of: bugfix,feature,refactor,optimize,diagnose,test,audit,review,security,trace,scaffold,migrate,schema,mock,config,dependency,docs,style,format,question,unclear
+interactionIntent: question|plan|act|help|unknown
+secondaryTaskIntents: optional extra TASK_INTENTS when the user mixes intents (e.g. implement + ask a question)
 planningHint: none|short|medium|long
+When historyDigest.endingPosture is proposal_ready/incomplete/awaiting_approval and the user proceeds or adds constraints, prefer interactionIntent=act (even for short replies). Pure probes about a prior proposal stay question. Mixed act+question → act with secondaryTaskIntents/userQuestions.
 Do not invent mutation fences. Prefer assumptionsMade over askUserSuggested when the ask is clear.`;
 
 function buildUserPrompt(input: DirectionAnalysisInput): string {
@@ -27,6 +30,9 @@ function buildUserPrompt(input: DirectionAnalysisInput): string {
     `<mode>${input.mode}</mode>`,
     `<turn_kind>${input.turnKind}</turn_kind>`,
     `<situation_summary>${JSON.stringify(input.situationSummary)}</situation_summary>`,
+    input.historyDigest
+      ? `<history_digest>${JSON.stringify(input.historyDigest)}</history_digest>`
+      : "",
     input.intentCues
       ? `<intent_cues>${JSON.stringify(input.intentCues)}</intent_cues>`
       : "",

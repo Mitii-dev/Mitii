@@ -177,6 +177,25 @@ export function looksLikeAgentVerificationRequest(message: string): boolean {
 
 
 /**
+ * Short agent follow-ups that mean "proceed with the write" after a proposal
+ * ("continue", "yes", "go ahead", "do it") — not more Q&A.
+ */
+export function looksLikeAgentExecuteContinue(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0 || text.length > 64) {
+    return false;
+  }
+  return (
+    /^(?:please\s+|ok[,.]?\s+|okay[,.]?\s+)?(?:continue|go\s+on|keep\s+going|proceed|go\s+ahead|do\s+it|yes|yep|yeah|sure|apply(?:\s+it)?|ship\s+it|lgtm|sounds?\s+good)\.?[!]?$/i.test(
+      text,
+    ) ||
+    /^(?:yes|yep|yeah|sure|ok|okay)[,.]?\s+(?:please\s+)?(?:continue|proceed|do\s+it|implement(?:\s+it)?|apply(?:\s+it)?|go\s+ahead|start)\.?[!]?$/i.test(
+      text,
+    )
+  );
+}
+
+/**
  * Agent-mode safety net when understanding classifies an implementation ask
  * as a "question" (common with "Can you implement…?").
  */
@@ -190,7 +209,7 @@ export function looksLikeAgentMutationRequest(message: string): boolean {
     return false;
   }
 
-  // How-to / what-is / past-tense status phrasing expects an answer, not a write grant.
+  // How-to / what-is / brainstorm / past-tense status → answer, not a write grant.
   if (
     /^(?:how\s+(?:do|does|did|can|should|would|to)|why\s+|what\s+(?:is|are|does|would|did|was|were)|when\s+|where\s+|which\s+)/i.test(
       text,
@@ -199,6 +218,11 @@ export function looksLikeAgentMutationRequest(message: string): boolean {
     /^(?:please\s+)?(?:explain|compare|describe|clarify|tell me|find|list|show|summarize|analyse|analyze)\b/i.test(
       text,
     ) ||
+    // "what all checks can we newly implement?" — ideation, not execute yet.
+    /\bwhat\s+all\b/i.test(text) ||
+    (/\?\s*$/.test(text.trim()) &&
+      /\b(?:what|which)\b/i.test(text) &&
+      /\b(?:can|could|should)\s+(?:we|i|you)\b/i.test(text)) ||
     // Follow-ups about prior work ("did you clear…?", "have you finished…?")
     /^(?:so\s+|and\s+|ok[,.]?\s+|okay[,.]?\s+)?(?:did|have|has|were|was|are|is)\s+(?:you|we|it|they|the)\b/i.test(
       text,
@@ -208,6 +232,9 @@ export function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
+    // "Start implementing it" / "start the implementation" — gerund + noun forms.
+    /\bstart\s+(?:the\s+)?implement(?:ing|ation)\b/i.test(text) ||
+    /\bimplementing\b/i.test(text) ||
     /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+|you\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build(?!\s+(?:logs?|errors?|output|failures?|status|artifacts?)\b)|create|design|develop|write|add|edit|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|clear|discard|revert|unstage|clean(?:\s+up)?|update|modify|change|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||

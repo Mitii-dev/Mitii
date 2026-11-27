@@ -2,6 +2,7 @@ import {
   directionAnalysisInputSchema,
   type DirectionAnalysisInput,
 } from "../../contracts/input/DirectionAnalysisInput";
+import type { EndingPosture } from "../../contracts/continuity/EndingPosture";
 import {
   taskDirectionAssessmentSchema,
   type TaskDirectionAssessment,
@@ -32,14 +33,19 @@ export function assessDirection(
   const assumptionsMade: string[] = [];
   const reasonCodes: string[] = ["assess_direction_deterministic"];
 
-  // Knowledge / how-to phrasing wins over verb false positives ("explain how to add…").
+  // Knowledge / how-to / brainstorm phrasing wins over verb false positives
+  // ("explain how to add…", "what all checks can we newly implement?").
   if (
     /^(?:please\s+)?(?:explain|describe|summarize|summarise|clarify|compare)\b/.test(
       text,
     ) ||
     /^(?:how\s+(?:do|does|did|can|should|would|to)|what\s+(?:is|are|does)|why\s+)/.test(
       text,
-    )
+    ) ||
+    /\bwhat\s+all\b/.test(text) ||
+    (/\?\s*$/.test(text.trim()) &&
+      /\b(?:what|which)\b/.test(text) &&
+      /\b(?:can|could|should)\s+(?:we|i|you)\b/.test(text))
   ) {
     primaryTaskIntent = "question";
     interactionIntent = "question";
@@ -63,7 +69,8 @@ export function assessDirection(
     difficulty = "complex";
   } else if (
     cues?.createAsk ||
-    /\b(implement|add|create|build|upgrade|scaffold)\b/.test(text)
+    /\b(implement(?:ing)?|add|create|build|upgrade|scaffold)\b/.test(text) ||
+    /\bstart\s+(?:the\s+)?implement(?:ing|ation)\b/.test(text)
   ) {
     primaryTaskIntent = "feature";
     planningHint = "short";
@@ -101,12 +108,28 @@ export function assessDirection(
 
   if (vagueNudge) {
     if (continuation) {
-      // Follow-up nudges ("?", "go on") keep prior-chat context — do not clarify.
-      primaryTaskIntent = "question";
-      interactionIntent = "question";
       askUserSuggested = false;
       assumptionsMade.push("continue_turn_assume_prior_context");
-      reasonCodes.push("assess_continuation_nudge");
+      const posture = input.historyDigest?.endingPosture;
+      const openWork =
+        posture === "proposal_ready" ||
+        posture === "incomplete" ||
+        posture === "awaiting_approval";
+      // Open prior work + vague continuation → act; missing posture falls
+      // back to agent-as-act so first deploys without stamped continuity still work.
+      if (input.mode === "agent" && (openWork || !posture)) {
+        primaryTaskIntent = "feature";
+        interactionIntent = "act";
+        reasonCodes.push(
+          openWork
+            ? "assess_continuity_open_work_as_act"
+            : "assess_agent_continuation_as_act",
+        );
+      } else {
+        primaryTaskIntent = "question";
+        interactionIntent = "question";
+        reasonCodes.push("assess_continuation_nudge");
+      }
     } else {
       askUserSuggested = true;
       primaryTaskIntent = "unclear";
@@ -193,7 +216,12 @@ export function directionInputFromSituationPack(pack: {
   host?: { dirtyPaths?: string[] };
   pins?: { skillIds?: string[]; mcpIds?: string[] };
   budget?: { windowBand?: string };
-  history?: { priorRoute?: string; priorTaskBand?: string; digest?: string };
+  history?: {
+    priorRoute?: string;
+    priorTaskBand?: string;
+    endingPosture?: EndingPosture;
+    digest?: string;
+  };
   navigation?: { mentionedPaths?: string[] };
 }): DirectionAnalysisInput {
   const text = pack.request?.text ?? pack.requestText ?? "";
@@ -215,6 +243,7 @@ export function directionInputFromSituationPack(pack: {
       ? {
           priorRoute: pack.history.priorRoute,
           priorTaskBand: pack.history.priorTaskBand,
+          endingPosture: pack.history.endingPosture,
           digest: pack.history.digest,
         }
       : undefined,

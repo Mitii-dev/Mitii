@@ -1,9 +1,16 @@
 import { z } from "zod";
 
+import { endingPostureSchema } from "../../../modules/request-understanding/contracts/continuity/EndingPosture";
+
 /** Minimal start shape for the new runtime — expands as contracts migrate. */
 export const runtimeStartInputSchema = z
   .object({
     runId: z.string().min(1).optional(),
+    /**
+     * Host thread / chat id — used to load/save dialogue continuity across
+     * runs (priorRoute + endingPosture). Distinct from runId.
+     */
+    sessionId: z.string().min(1).optional(),
     message: z.string().min(1),
     /**
      * Host approval preset (safe / guided / pilot → every_mutation /
@@ -42,13 +49,14 @@ export const runtimeStartInputSchema = z
       })
       .strict()
       .optional(),
-    /** Compacted history / prior route (S1-HISTORY). */
+    /** Compacted history / prior route (S1-HISTORY + continuity bias). */
     history: z
       .object({
         compactedTurns: z.number().int().nonnegative().optional(),
         digest: z.string().max(4000).optional(),
         priorRoute: z.string().optional(),
         priorTaskBand: z.string().optional(),
+        endingPosture: endingPostureSchema.optional(),
       })
       .strict()
       .optional(),

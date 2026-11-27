@@ -1,7 +1,14 @@
 import { runtimeStartInputSchema } from "../contracts/input/RuntimeStartInput";
 import type { RuntimeStartInput } from "../contracts/input/RuntimeStartInput";
 import type { RuntimeRunResult } from "../contracts/output/RuntimeRunResult";
+import type { TaskDirectionAssessment } from "../contracts/assess/TaskDirectionAssessment";
 import { saveRuntimeSessionCarry } from "../helpers/checkpoint/SaveRuntimeSessionCarry";
+import {
+  deriveEndingPosture,
+  loadDialogueContinuity,
+  mergeHistoryContinuity,
+  saveDialogueContinuity,
+} from "../helpers/continuity";
 import { maybeSaveHeartbeatCheckpoint } from "../helpers/heartbeat/SaveHeartbeatCheckpoint";
 import { assembleRuntimeParityFields } from "../helpers/parity/AssembleRuntimeParityFields";
 import { assembleRuntimeStartResult } from "../helpers/parity/AssembleRuntimeStartResult";
@@ -35,7 +42,15 @@ export interface ExecuteRuntimeStartInput {
 export async function executeRuntimeStart(
   input: ExecuteRuntimeStartInput,
 ): Promise<RuntimeRunResult> {
-  const start = runtimeStartInputSchema.parse(input.start);
+  const parsed = runtimeStartInputSchema.parse(input.start);
+  const continuity = await loadDialogueContinuity(
+    input.deps,
+    parsed.sessionId,
+  );
+  const start = runtimeStartInputSchema.parse({
+    ...parsed,
+    history: mergeHistoryContinuity(parsed.history, continuity),
+  });
   const mode = input.mode ?? "agent";
   const sink = input.eventSink ?? input.deps?.eventSink;
   const deps =
@@ -158,11 +173,35 @@ export async function executeRuntimeStart(
     heartbeatReasonCodes: heartbeat.reasonCodes,
   });
 
+  const assessment = through.store.getSlice<TaskDirectionAssessment>(
+    "assessment",
+  );
+  const endingPosture = deriveEndingPosture({
+    mode,
+    route: decision.route,
+    status: result.status,
+    gateKind: result.gateKind,
+    mutationSucceeded: mutationBatchSucceeded,
+  });
+  const continuityFields = {
+    priorRoute: decision.route,
+    priorTaskBand: assessment?.taskBand,
+    endingPosture,
+  };
+
   await saveRuntimeSessionCarry(input.deps, {
     runId: result.runId,
     message: start.message,
     mode,
     gateKind: result.gateKind,
+    ...continuityFields,
+  });
+  await saveDialogueContinuity(input.deps, {
+    sessionId: start.sessionId,
+    message: start.message,
+    mode,
+    gateKind: result.gateKind,
+    ...continuityFields,
   });
 
   return result;

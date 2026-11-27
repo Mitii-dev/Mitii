@@ -39,6 +39,16 @@ export const situationPackSchema = z
         digest: z.string().optional(),
         priorRoute: z.string().optional(),
         priorTaskBand: z.string().optional(),
+        endingPosture: z
+          .enum([
+            "answered",
+            "proposal_ready",
+            "mutated",
+            "awaiting_approval",
+            "awaiting_clarify",
+            "incomplete",
+          ])
+          .optional(),
       })
       .strict()
       .optional(),

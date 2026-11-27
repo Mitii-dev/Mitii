@@ -10,6 +10,7 @@ import type { RuntimeSituationSnapshot } from "../../contracts/input/RuntimeSitu
  */
 export interface HostStartLoose {
   runId?: string;
+  sessionId?: string;
   message?: string;
   mode?: string;
   contextWindowTokens?: number;
@@ -184,6 +185,10 @@ export function adaptHostStartToRuntime(
     conversation,
     history,
   });
+  const sessionId =
+    input.sessionId?.trim() ||
+    input.request?.sessionId?.trim() ||
+    undefined;
 
   const git = situation?.git ?? input.git;
   const memory = situation?.memory ?? input.memory;
@@ -206,6 +211,7 @@ export function adaptHostStartToRuntime(
 
   const start = runtimeStartInputSchema.parse({
     runId: input.runId,
+    ...(sessionId ? { sessionId } : {}),
     message: message.length > 0 ? message : "(empty)",
     ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
     ...(input.explorationDepth

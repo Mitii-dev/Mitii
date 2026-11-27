@@ -23,6 +23,12 @@ export {
 export type { DirectionAnalysisInput } from "./input/DirectionAnalysisInput";
 
 export {
+  ENDING_POSTURES,
+  endingPostureSchema,
+} from "./continuity/EndingPosture";
+export type { EndingPosture } from "./continuity/EndingPosture";
+
+export {
   taskDirectionAssessmentSchema,
 } from "./output/TaskDirectionAssessment";
 export type { TaskDirectionAssessment } from "./output/TaskDirectionAssessment";

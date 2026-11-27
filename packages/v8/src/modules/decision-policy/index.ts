@@ -58,6 +58,7 @@ export {
   hasExplicitEditLimit,
   looksLikeWorkspaceRootMutation,
   applyAntiNagAsk,
+  applyContinuityBias,
   mapPlanningHintToDepth,
   compileGrantFromPlate,
   attachUnifiedScopes,
@@ -85,6 +86,9 @@ export type {
   FastPathResolution,
   BehavioralAskSignals,
   FastPathDeclineReason,
+  ContinuityBiasInput,
+  ContinuityBiasResult,
+  ContinuityPreferredRoute,
 } from "./helpers";
 
 export { DecisionPolicyPipeline } from "./flow/DecisionPolicyPipeline";

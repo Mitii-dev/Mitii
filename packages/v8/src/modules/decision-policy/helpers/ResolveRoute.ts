@@ -11,9 +11,11 @@ import type {
   DecisionReasonCode,
   ExecutionRoute,
 } from "../contracts";
+import type { EndingPosture } from "../../request-understanding";
 import {
   looksLikeWorkspaceBugReport,
 } from "./LooksLikeWorkspaceBugReport";
+import { applyContinuityBias } from "./ApplyContinuityBias";
 import {
   isDiagnosisIntent,
   isMutationIntent,
@@ -23,6 +25,7 @@ import {
   isExplicitReadOnlyRequest,
   isHardPlanOnlyRequest,
   isSoftExplicitPlanRequest,
+  looksLikeAgentExecuteContinue,
   looksLikeAgentMutationRequest,
   looksLikeAgentVerificationRequest,
   looksLikeCodeReviewRequest,
@@ -66,6 +69,8 @@ export function resolveRoute(params: {
   policyFactsFirst?: boolean;
   /** Intake turn kind — continuation turns prefer ballot over soft clarify. */
   turnKind?: RequestTurnKind;
+  priorRoute?: string;
+  endingPosture?: EndingPosture;
 }): RouteResolution {
   const { mode, understanding, message } = params;
   const { intent, taskAnalysis } = understanding;
@@ -129,6 +134,51 @@ export function resolveRoute(params: {
   // Explicit imperative "create X" must execute even if the ballot says plan.
   if (interaction === "plan" && isExplicitCreateAsk(message)) {
     reasonCodes.push("agent_create_ask_execute");
+    reasonCodes.push("mutation_execute");
+    return {
+      route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+  const continuity = applyContinuityBias({
+    mode,
+    turnKind: params.turnKind,
+    priorRoute: params.priorRoute,
+    endingPosture: params.endingPosture,
+    interactionIntent: interaction as
+      | "question"
+      | "plan"
+      | "act"
+      | "help"
+      | "unknown",
+    primaryTaskIntent: primary,
+    secondaryTaskIntents: intent.classification.secondaryTaskIntents,
+  });
+  if (continuity.preferredRoute === "execute") {
+    reasonCodes.push("continuity_bias_execute");
+    reasonCodes.push("mutation_execute");
+    return {
+      route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+  if (continuity.preferredRoute === "answer") {
+    reasonCodes.push("continuity_bias_answer");
+    reasonCodes.push("repository_grounded_answer");
+    return {
+      route: "answer",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+  // Weak fallback when continuity was not stamped.
+  if (
+    !params.endingPosture &&
+    continuation &&
+    looksLikeAgentExecuteContinue(message)
+  ) {
     reasonCodes.push("mutation_execute");
     return {
       route: "execute",
@@ -314,6 +364,7 @@ function resolveAgentRouteFactsFirst(params: {
   const heuristicWantsWrite =
     !isExplicitReadOnlyRequest(message) &&
     (looksLikeAgentMutationRequest(message) ||
+      looksLikeAgentExecuteContinue(message) ||
       looksLikeWorkspaceBugReport(message));
   const understandingWantsRead =
     interaction === "question" ||

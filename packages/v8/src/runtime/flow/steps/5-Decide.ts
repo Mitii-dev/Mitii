@@ -82,6 +82,11 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     clarificationQuestions: assessment.clarificationQuestions,
     turnKind: ctx.input.turnKind ?? "new",
     message: pack?.request?.text ?? pack?.requestText ?? ctx.input.message,
+    interactionIntent: assessment.interactionIntent,
+    secondaryTaskIntents: assessment.secondaryTaskIntents,
+    priorRoute: pack?.history?.priorRoute ?? ctx.input.history?.priorRoute,
+    endingPosture:
+      pack?.history?.endingPosture ?? ctx.input.history?.endingPosture,
   });
 
   // S2C: plate `answer` is the live wire route (legacy aliases shimmed elsewhere).

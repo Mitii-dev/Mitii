@@ -141,6 +141,12 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Dialogue continuity: prior open work + act/steer stance → execute. */
+  "continuity_bias_execute",
+  /** Dialogue continuity: prior open work + pure question → answer. */
+  "continuity_bias_answer",
+  /** Prior answered Q&A; defer to normal plate for a new act ask. */
+  "continuity_answered_defer_plate",
   /** Tool grant profile selected by BuildToolGrant (audit / debug). */
   "grant_profile_none",
   "grant_profile_network_only",

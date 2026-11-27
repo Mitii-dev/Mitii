@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { endingPostureSchema } from "../continuity/EndingPosture";
+
 /**
  * Input for RU.assessDirection — built from SituationPack (§5.4 A).
  * Intent rule priors intentionally omitted (S2-PRIORS).
@@ -41,6 +43,7 @@ export const directionAnalysisInputSchema = z
       .object({
         priorRoute: z.string().optional(),
         priorTaskBand: z.string().optional(),
+        endingPosture: endingPostureSchema.optional(),
         digest: z.string().optional(),
       })
       .strict()

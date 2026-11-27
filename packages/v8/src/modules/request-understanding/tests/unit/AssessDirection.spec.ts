@@ -90,4 +90,70 @@ describe("assessDirection", () => {
     expect(ballot.askUserSuggested).toBe(false);
     expect(ballot.reasonCodes).toContain("assess_continuation_nudge");
   });
+
+  it("treats agent follow_up continue/yes as act not question", () => {
+    for (const userCommand of ["continue", "yes"]) {
+      const ballot = assessDirection({
+        schemaVersion: 1,
+        userCommand,
+        mode: "agent",
+        turnKind: "follow_up",
+      });
+      expect(ballot.primaryTaskIntent).toBe("feature");
+      expect(ballot.interactionIntent).toBe("act");
+      expect(ballot.reasonCodes).toContain("assess_agent_continuation_as_act");
+    }
+  });
+
+  it("treats agent follow_up continue after proposal_ready as continuity act", () => {
+    const ballot = assessDirection({
+      schemaVersion: 1,
+      userCommand: "continue",
+      mode: "agent",
+      turnKind: "follow_up",
+      historyDigest: {
+        priorRoute: "answer",
+        endingPosture: "proposal_ready",
+      },
+    });
+    expect(ballot.interactionIntent).toBe("act");
+    expect(ballot.reasonCodes).toContain("assess_continuity_open_work_as_act");
+  });
+
+  it("keeps ask follow_up continue as question after answered posture", () => {
+    const ballot = assessDirection({
+      schemaVersion: 1,
+      userCommand: "continue",
+      mode: "ask",
+      turnKind: "follow_up",
+      historyDigest: {
+        priorRoute: "answer",
+        endingPosture: "answered",
+      },
+    });
+    expect(ballot.interactionIntent).toBe("question");
+    expect(ballot.reasonCodes).toContain("assess_continuation_nudge");
+  });
+
+  it("treats Start implementing it as a feature act", () => {
+    const ballot = assessDirection({
+      schemaVersion: 1,
+      userCommand: "Start implementing it",
+      mode: "agent",
+      turnKind: "follow_up",
+    });
+    expect(ballot.primaryTaskIntent).toBe("feature");
+    expect(ballot.interactionIntent).toBe("act");
+  });
+
+  it("keeps what-all implement brainstorms as questions", () => {
+    const ballot = assessDirection({
+      schemaVersion: 1,
+      userCommand:
+        "I wanted to develop new checks which will be helpful for writesting test for ai agent\n\nwhat all check we can newly implement?",
+      mode: "agent",
+    });
+    expect(ballot.primaryTaskIntent).toBe("question");
+    expect(ballot.interactionIntent).toBe("question");
+  });
 });

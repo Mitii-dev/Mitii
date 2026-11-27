@@ -118,6 +118,8 @@ export function orientSituation(ctx: StepContext): SituationPack {
   const hasHistory = Boolean(
     history?.digest ||
       history?.priorRoute ||
+      history?.endingPosture ||
+      history?.priorTaskBand ||
       typeof history?.compactedTurns === "number",
   );
   const hasGit = Boolean(
@@ -223,6 +225,7 @@ export function orientSituation(ctx: StepContext): SituationPack {
             digest: history?.digest,
             priorRoute: history?.priorRoute,
             priorTaskBand: history?.priorTaskBand,
+            endingPosture: history?.endingPosture,
           },
         }
       : {}),

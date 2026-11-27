@@ -77,6 +77,12 @@ export {
 } from "./ResolveGrantPathScopes";
 export { applyAntiNagAsk } from "./ApplyAntiNagAsk";
 export type { AntiNagAskInput, AntiNagAskResult } from "./ApplyAntiNagAsk";
+export { applyContinuityBias } from "./ApplyContinuityBias";
+export type {
+  ContinuityBiasInput,
+  ContinuityBiasResult,
+  ContinuityPreferredRoute,
+} from "./ApplyContinuityBias";
 export { mapPlanningHintToDepth } from "./MapPlanningHintToDepth";
 export { compileGrantFromPlate } from "./CompileGrantFromPlate";
 export type {

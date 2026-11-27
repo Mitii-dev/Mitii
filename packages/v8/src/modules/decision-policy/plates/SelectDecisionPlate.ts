@@ -1,6 +1,11 @@
 import { applyAntiNagAsk } from "../helpers/ApplyAntiNagAsk";
+import { applyContinuityBias } from "../helpers/ApplyContinuityBias";
+import type { EndingPosture } from "../../request-understanding";
 import { mapPlanningHintToDepth } from "../helpers/MapPlanningHintToDepth";
-import { looksLikeAgentMutationRequest } from "../helpers/RouteMessageSignals";
+import {
+  looksLikeAgentExecuteContinue,
+  looksLikeAgentMutationRequest,
+} from "../helpers/RouteMessageSignals";
 import { clarifyPlate } from "./routes/clarify";
 import { answerResearchPlate } from "./routes/answer";
 import { diagnosePlate } from "./routes/diagnose";
@@ -25,6 +30,10 @@ export interface SelectDecisionPlateInput {
   turnKind?: "new" | "continue" | "steer" | "follow_up" | "recover";
   /** Raw user message — agent mutation safety net when ballot says question. */
   message?: string;
+  interactionIntent?: "question" | "plan" | "act" | "help" | "unknown";
+  secondaryTaskIntents?: readonly string[];
+  priorRoute?: string;
+  endingPosture?: EndingPosture;
 }
 
 /**
@@ -58,14 +67,74 @@ export function selectDecisionPlate(
     };
   }
 
+  const continuity = applyContinuityBias({
+    mode: input.mode,
+    turnKind: input.turnKind,
+    priorRoute: input.priorRoute,
+    endingPosture: input.endingPosture,
+    interactionIntent: input.interactionIntent,
+    primaryTaskIntent: input.primaryTaskIntent,
+    secondaryTaskIntents: input.secondaryTaskIntents,
+  });
+
+  if (continuity.preferredRoute === "execute") {
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+    ]);
+  }
+  if (continuity.preferredRoute === "answer") {
+    return withNag(answerResearchPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+    ]);
+  }
+  if (continuity.preferredRoute === "diagnose") {
+    return withNag(diagnosePlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+    ]);
+  }
+  if (continuity.preferredRoute === "plan") {
+    return withNag(planVisiblePlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+    ]);
+  }
+
+  // Weak fallback when continuity was not stamped (old sessions / no sessionId).
+  const continueTurn =
+    input.turnKind === "follow_up" ||
+    input.turnKind === "continue" ||
+    input.turnKind === "steer";
+  if (
+    !input.endingPosture &&
+    input.mode === "agent" &&
+    continueTurn &&
+    typeof input.message === "string" &&
+    looksLikeAgentExecuteContinue(input.message)
+  ) {
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+      "plate_agent_continue_as_execute",
+    ]);
+  }
+
   const intent = input.primaryTaskIntent.toLowerCase();
 
   if (intent === "diagnose" || intent === "bugfix") {
     if (input.mode === "ask") {
-      return withNag(diagnosePlate, nag.reasonCodes);
+      return withNag(diagnosePlate, [
+        ...nag.reasonCodes,
+        ...continuity.reasonCodes,
+      ]);
     }
     if (intent === "diagnose" || input.clarityConfidence !== "high") {
-      return withNag(diagnosePlate, nag.reasonCodes);
+      return withNag(diagnosePlate, [
+        ...nag.reasonCodes,
+        ...continuity.reasonCodes,
+      ]);
     }
   }
 
@@ -80,16 +149,21 @@ export function selectDecisionPlate(
     ) {
       return withNag(executeFastPathPlate, [
         ...nag.reasonCodes,
+        ...continuity.reasonCodes,
         "plate_agent_mutation_despite_question",
       ]);
     }
-    return withNag(answerResearchPlate, nag.reasonCodes);
+    return withNag(answerResearchPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+    ]);
   }
 
   // Ask mode is read-only Q&A — never seal to a visible plan plate.
   if (input.mode === "ask") {
     return withNag(answerResearchPlate, [
       ...nag.reasonCodes,
+      ...continuity.reasonCodes,
       "plate_ask_mode_answer",
     ]);
   }
@@ -102,10 +176,18 @@ export function selectDecisionPlate(
     input.risk === "high" ||
     input.risk === "critical"
   ) {
-    return withNag(executeVisiblePlate, [...nag.reasonCodes, depthReason]);
+    return withNag(executeVisiblePlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+      depthReason,
+    ]);
   }
   if (depthFromHint === "internal") {
-    return withNag(executeMutatePlate, [...nag.reasonCodes, depthReason]);
+    return withNag(executeMutatePlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+      depthReason,
+    ]);
   }
   if (
     intent === "feature" ||
@@ -115,10 +197,32 @@ export function selectDecisionPlate(
     intent === "config" ||
     intent === "bugfix"
   ) {
-    return withNag(executeFastPathPlate, [...nag.reasonCodes, depthReason]);
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+      depthReason,
+    ]);
   }
 
-  return withNag(answerResearchPlate, nag.reasonCodes);
+  // Agent follow-ups like "Start implementing it" may land as unclear/other —
+  // still promote when the message is an imperative write ask.
+  if (
+    input.mode === "agent" &&
+    typeof input.message === "string" &&
+    looksLikeAgentMutationRequest(input.message)
+  ) {
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+      depthReason,
+      "plate_agent_mutation_despite_question",
+    ]);
+  }
+
+  return withNag(answerResearchPlate, [
+    ...nag.reasonCodes,
+    ...continuity.reasonCodes,
+  ]);
 }
 
 function withNag(plate: DecisionPlate, nagCodes: string[]): DecisionPlate {

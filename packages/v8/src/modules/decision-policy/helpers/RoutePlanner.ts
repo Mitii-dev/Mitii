@@ -2,7 +2,10 @@ import type {
   RequestTurnKind,
   UserRequestOrigin,
 } from "../../request-intake";
-import type { RequestUnderstandingResult } from "../../request-understanding";
+import type {
+  EndingPosture,
+  RequestUnderstandingResult,
+} from "../../request-understanding";
 import type { WindowPolicy } from "../../window-budget";
 
 import type {
@@ -75,6 +78,8 @@ export function planRoute(params: {
   policyFactsFirst?: boolean;
   /** Intake turn kind — continuation prefers ballot over soft re-clarify. */
   turnKind?: RequestTurnKind;
+  priorRoute?: string;
+  endingPosture?: EndingPosture;
   /**
    * When non-empty, stamp MCP attach on answer so research grant stays tool-live.
    */
@@ -87,6 +92,8 @@ export function planRoute(params: {
     message: params.message,
     policyFactsFirst: params.policyFactsFirst,
     turnKind: params.turnKind,
+    priorRoute: params.priorRoute,
+    endingPosture: params.endingPosture,
   });
   const originReasonCodes: DecisionReasonCode[] = [];
   if (params.origin === "automation") {
@@ -102,6 +109,8 @@ export function planRoute(params: {
       suppressClarification: true,
       policyFactsFirst: params.policyFactsFirst,
       turnKind: params.turnKind,
+      priorRoute: params.priorRoute,
+      endingPosture: params.endingPosture,
     });
     originReasonCodes.push("automation_clarify_suppressed");
   }
