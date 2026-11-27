@@ -23,6 +23,20 @@ export const DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS = 1536;
 export const DEFAULT_OLLAMA_EMBEDDING_MODEL = 'nomic-embed-text';
 export const DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS = 768;
 
+/** Intentional off — not a failed embedding pass. */
+export const SEMANTIC_INDEX_DISABLED_REASON =
+  'Semantic index is disabled or not configured.';
+
+export function isSemanticIndexDisabledReason(
+  reason: string | undefined,
+): boolean {
+  if (!reason) return false;
+  return (
+    reason === SEMANTIC_INDEX_DISABLED_REASON ||
+    reason === 'Semantic index is disabled.'
+  );
+}
+
 export type EmbeddingBackend =
   | 'openai-compatible'
   | 'ollama'

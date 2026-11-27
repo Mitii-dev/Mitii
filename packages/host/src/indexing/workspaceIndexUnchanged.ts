@@ -8,6 +8,7 @@ import {
 
 import {
   readIndexRuntimeMetadata,
+  SEMANTIC_INDEX_DISABLED_REASON,
   type IndexRuntimeMetadata,
 } from './semanticIndex.js';
 import {
@@ -118,7 +119,7 @@ export function vectorIndexFromMetadata(input: {
 
   return {
     status: 'unavailable',
-    reason: 'Semantic index is disabled or not configured.',
+    reason: SEMANTIC_INDEX_DISABLED_REASON,
   };
 }
 

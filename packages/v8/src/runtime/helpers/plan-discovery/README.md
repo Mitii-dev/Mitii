@@ -4,6 +4,7 @@ Bounded readonly discovery before PlanningPipeline (S3A-DISCOVER).
 
 ## Owns
 - Whether/how to run a discovery pass (`shouldRunDiscoveryPass`, `runDiscoveryPass`)
+- Root recon when focus paths are empty (`DiscoveryRootPeeks` — list + capped high-value reads)
 - Quality floor + sufficiency (`EnforceDiscoveryQualityFloor`, `PlanDiscoveryQuality`)
 - Discovery strategy contract (`applyPlanModeDiscoveryContract`)
 - Scope-phase bounds / clarify draft / next-phase answer formatting

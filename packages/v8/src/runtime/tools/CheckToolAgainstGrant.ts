@@ -21,11 +21,17 @@ export interface ToolGrantCheckResult {
 /**
  * Policy-stateless grant check — prompt ⊆ grant ⊆ registry starts here.
  */
+/** Session checklist tools — always allowed when exposed in the prompt. */
+const GRANT_EXEMPT_META_TOOLS = new Set(["update_todos", "describe_tool"]);
+
 export function checkToolAgainstGrant(params: {
   toolId: string;
   effect?: "none" | "read" | "mutate" | "external";
   grant: GrantSurface;
 }): ToolGrantCheckResult {
+  if (GRANT_EXEMPT_META_TOOLS.has(params.toolId)) {
+    return { ok: true };
+  }
   const allowed = params.grant.allowedTools ?? [];
   if (allowed.length > 0 && !allowed.includes(params.toolId)) {
     return { ok: false, reason: "tool_not_allowed" };

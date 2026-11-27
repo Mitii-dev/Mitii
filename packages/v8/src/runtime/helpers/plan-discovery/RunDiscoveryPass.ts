@@ -13,6 +13,7 @@ import type { DiscoveryPassBudget } from "../../../modules/window-budget";
 import type { SituationPack } from "../../contracts/orient/SituationPack";
 import type { RuntimeToolExecutorPort } from "../../ports/RuntimeToolExecutorPort";
 import { buildReadonlyDiscoveryGrant } from "./BuildReadonlyDiscoveryGrant";
+import { peekDiscoveryFromWorkspaceRoot } from "./DiscoveryRootPeeks";
 import {
   enforceDiscoveryQualityFloor,
   type EnforceDiscoveryQualityFloorResult,
@@ -130,6 +131,28 @@ export async function runDiscoveryPass(
       } else {
         reasonCodes.push("discovery_tool_read_denied_or_failed");
       }
+    }
+  } else if (input.tools) {
+    // No focus paths — still recon the workspace root so plan mode can draft
+    // from real contents instead of empty seed + hollow clarify.
+    const rooted = await peekDiscoveryFromWorkspaceRoot({
+      observation,
+      tools: input.tools,
+      grant,
+      budget: input.budget,
+      toolCalls,
+      fileReads,
+      searches,
+      objective: input.objective,
+    });
+    observation.filesRead = rooted.observation.filesRead;
+    observation.searchHits = rooted.observation.searchHits;
+    toolCalls = rooted.toolCalls;
+    fileReads = rooted.fileReads;
+    searches = rooted.searches;
+    reasonCodes.push(...rooted.reasonCodes);
+    if (rooted.reasonCodes.every((c) => !c.startsWith("discovery_root_"))) {
+      reasonCodes.push("discovery_seed_only");
     }
   } else {
     reasonCodes.push("discovery_seed_only");

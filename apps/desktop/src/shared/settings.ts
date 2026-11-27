@@ -148,14 +148,52 @@ export function mergeDesktopSettings(
   base: DesktopSettings = structuredClone(DEFAULT_DESKTOP_SETTINGS),
 ): DesktopSettings {
   if (!isPlainObject(partial)) {
-    return lockAutocomplete(migrateLegacyEngineImplementation(structuredClone(base)));
+    return lockAutocomplete(
+      alignSemanticIndexEnabled(
+        migrateLegacyEngineImplementation(structuredClone(base)),
+      ),
+    );
   }
   return lockAutocomplete(
-    migrateLegacyEngineImplementation(
-      deepMerge(base as Record<string, unknown>, partial) as DesktopSettings,
-      partial,
+    alignSemanticIndexEnabled(
+      migrateLegacyEngineImplementation(
+        deepMerge(base as Record<string, unknown>, partial) as DesktopSettings,
+        partial,
+      ),
     ),
   );
+}
+
+/**
+ * Keep `semanticIndex.enabled` aligned with `source`. The Index UI turns the
+ * feature off by setting source=`disabled`; older defaults left enabled=false
+ * with source=bundled, which skipped vectors.
+ */
+export function alignSemanticIndexEnabled(
+  settings: DesktopSettings,
+): DesktopSettings {
+  const source = settings.semanticIndex.source;
+  const shouldEnable = source !== 'disabled';
+  if (settings.semanticIndex.enabled === shouldEnable) return settings;
+  return {
+    ...settings,
+    semanticIndex: {
+      ...settings.semanticIndex,
+      enabled: shouldEnable,
+      ...(shouldEnable &&
+      (settings.semanticIndex.backend === 'disabled' ||
+        settings.semanticIndex.backend === 'auto')
+        ? {
+            backend:
+              source === 'bundled' ||
+              source === 'ollama' ||
+              source === 'openai-compatible'
+                ? source
+                : ('bundled' as const),
+          }
+        : {}),
+    },
+  };
 }
 
 /**
@@ -260,7 +298,11 @@ export function settingsToMitiiConfigFile(
   if (settings.search.searxngBaseUrl.trim()) {
     payload.searxngBaseUrl = settings.search.searxngBaseUrl.trim();
   }
-  payload.embeddingSource = settings.semanticIndex.source;
+  payload.embeddingSource = settings.semanticIndex.enabled
+    ? settings.semanticIndex.source === 'disabled'
+      ? 'bundled'
+      : settings.semanticIndex.source
+    : 'disabled';
   if (settings.semanticIndex.model.trim()) {
     payload.embeddingModel = settings.semanticIndex.model.trim();
   }
@@ -298,6 +340,15 @@ export function mitiiConfigFileToSettings(
     raw.embeddingSource === 'disabled'
   ) {
     next.semanticIndex.source = raw.embeddingSource;
+    next.semanticIndex.enabled = raw.embeddingSource !== 'disabled';
+    if (raw.embeddingSource === 'disabled') {
+      next.semanticIndex.backend = 'disabled';
+    } else if (
+      next.semanticIndex.backend === 'disabled' ||
+      next.semanticIndex.backend === 'auto'
+    ) {
+      next.semanticIndex.backend = raw.embeddingSource;
+    }
   }
   if (typeof raw.embeddingModel === 'string') {
     next.semanticIndex.model = raw.embeddingModel;

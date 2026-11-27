@@ -5,6 +5,7 @@ The referee: it reads the evidence about a request and decides what the agent is
 ## Does
 - Scans the request for prompt-injection signals and clamps authority when found.
 - Chooses the route and planning depth.
+- Seals `mode=plan` to the visible plan plate **before** anti-nag clarify so plan runs discover → draft → after_plan gates (not a tool-less clarify handoff).
 - Applies dialogue continuity bias (`priorRoute` × `endingPosture` × user stance) so follow-ups after an open proposal promote to execute without phrase lists.
 - Compiles the tool grant, intersected with host safety limits.
 - Sets verification requirements and approval needs.

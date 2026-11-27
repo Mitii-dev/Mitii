@@ -1,3 +1,4 @@
+import type { LlmPort } from "../../modules/model-gateway";
 import type { RuntimeSessionStorePort } from "../helpers/checkpoint/RuntimeSessionCarry";
 import type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
 import type { GateCheckpointStorePort } from "../helpers/gates/types";
@@ -11,6 +12,11 @@ import type { RuntimeVerificationRunnerPort } from "./RuntimeVerificationRunnerP
 /** Optional injected adapters for composeRuntime / turn loop. */
 export interface RuntimeDependencies {
   model?: RuntimeModelPort;
+  /**
+   * LlmPort for PlanningPipeline discovery/clarify drafts (3A.3).
+   * Distinct from `model` (RuntimeModelPort for the turn loop).
+   */
+  planningLlm?: LlmPort;
   tools?: RuntimeToolExecutorPort;
   /** Soft wall for turn loop nudges (ms). */
   wallTimeSoftMs?: number;

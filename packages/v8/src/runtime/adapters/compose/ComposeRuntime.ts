@@ -20,6 +20,8 @@ export type ComposeRuntimeOptions = {
   /** Optional model — LlmPort is adapted, or pass RuntimeModelPort via `model`. */
   runLlm?: LlmPort;
   model?: RuntimeDependencies["model"];
+  /** Optional planning draft LLM; defaults to `runLlm` when set. */
+  planningLlm?: LlmPort;
   /** Schemas for grant-surface tool names (passed into completeViaLlmPort). */
   toolDefinitions?: readonly ModelToolDefinition[];
   /** Pre-built tool executor, or pass `toolRuntime` + `workspaceRoot` to adapt. */
@@ -115,6 +117,8 @@ export function composeRuntime(
             toolDefinitions: options.toolDefinitions,
           })
         : undefined),
+    // Same host LLM as the turn loop — PlanningPipeline needs LlmPort shape.
+    planningLlm: options.planningLlm ?? options.runLlm,
     tools,
     wallTimeSoftMs: options.wallTimeSoftMs,
     heartbeatIntervalMs: options.heartbeatIntervalMs,

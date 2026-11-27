@@ -35,6 +35,15 @@ export type IndexChipTone =
   | 'ready'
   | 'warn';
 
+function isBenignEmbeddingNotice(error: string | undefined): boolean {
+  if (!error) return true;
+  return (
+    error === 'Semantic index is disabled or not configured.' ||
+    error === 'Semantic index is disabled.' ||
+    error === 'Embeddings syncing in background.'
+  );
+}
+
 export function resolveIndexTone(
   index: DesktopIndexSnapshot | null,
   indexing: boolean,
@@ -43,11 +52,15 @@ export function resolveIndexTone(
   if (indexing && embeddingBackground) return 'embedding';
   if (indexing) return 'indexing';
   if (!index) return 'idle';
-  if (index.embeddingError && !index.lexicalReady) return 'warn';
+  const realEmbeddingError =
+    index.embeddingError && !isBenignEmbeddingNotice(index.embeddingError)
+      ? index.embeddingError
+      : undefined;
+  if (realEmbeddingError && !index.lexicalReady) return 'warn';
   if (index.embeddingPhase === 'running' || index.embeddingPhase === 'pending') {
     return 'embedding';
   }
-  if (index.embeddingError) return 'warn';
+  if (realEmbeddingError) return 'warn';
   if (!index.indexed || index.fileCount <= 0) return 'idle';
   if (index.truncated) return 'warn';
   return 'ready';
@@ -220,7 +233,12 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
       meta.push(`~${eta} min left`);
     }
     if (props.index.truncated) meta.push('Truncated');
-    if (props.index.embeddingError) meta.push('Embedding issue');
+    if (
+      props.index.embeddingError &&
+      !isBenignEmbeddingNotice(props.index.embeddingError)
+    ) {
+      meta.push('Embedding issue');
+    }
     if (props.index.lastIndexedAt) {
       meta.push(new Date(props.index.lastIndexedAt).toLocaleString());
     }

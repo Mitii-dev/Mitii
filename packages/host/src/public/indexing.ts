@@ -13,11 +13,13 @@ export {
   shouldEnableSemanticIndex,
   alignSemanticSettingsWithPersistedProfile,
   normalizeEmbeddingRequestBaseUrl,
+  isSemanticIndexDisabledReason,
   EMBEDDING_PRESETS,
   DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_MODEL,
   DEFAULT_OPENAI_COMPATIBLE_EMBEDDING_DIMENSIONS,
   DEFAULT_OLLAMA_EMBEDDING_MODEL,
   DEFAULT_OLLAMA_EMBEDDING_DIMENSIONS,
+  SEMANTIC_INDEX_DISABLED_REASON,
 } from '../indexing/semanticIndex.js';
 export type {
   EmbeddingBackend,

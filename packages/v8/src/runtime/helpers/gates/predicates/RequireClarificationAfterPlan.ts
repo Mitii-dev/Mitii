@@ -53,7 +53,11 @@ export function requireClarificationAfterPlan(
     return {
       action: "suspend",
       kind: "clarification_required",
-      payload: { clarifyOrigin: "hollow_plan" },
+      payload: {
+        clarifyOrigin: "hollow_plan",
+        clarificationPrompt:
+          "A plan is needed before implementing this. Share any constraints, or say go ahead so I can draft an exact plan for your approval.",
+      },
       reasonCodes: ["gate_clarify_hollow_plan"],
     };
   }

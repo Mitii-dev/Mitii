@@ -76,6 +76,31 @@ describe("resolveRoute: create asks in agent mode", () => {
     expect(result.route).toBe("plan");
   });
 
+  it("plan mode continues despite material clarify ballot", () => {
+    const unclear = createUnderstanding({
+      primaryTaskIntent: "feature",
+      interactionIntent: "plan",
+      needsClarification: true,
+      recommendsClarification: true,
+      status: "clarification_required",
+      taskAnalysis: {
+        clarity: "unclear",
+        scope: "unknown",
+        recommendsTaskClarification: true,
+      },
+    });
+    const result = resolveRoute({
+      mode: "plan",
+      understanding: unclear,
+      message:
+        "Can you plan implementing an app with calendar and notifications",
+    });
+    expect(result.route).toBe("plan");
+    expect(result.runDisposition).toBe("continue");
+    expect(result.reasonCodes).toContain("mode_plan_only");
+    expect(result.reasonCodes).not.toContain("clarification_material");
+  });
+
   it("emits a reason code declared in the contract", () => {
     expect(DECISION_REASON_CODES).toContain("agent_create_ask_execute");
   });

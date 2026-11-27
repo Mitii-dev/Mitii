@@ -135,7 +135,9 @@ export async function planPipeline(
     ctx.store.setSlice("discoveryBrief", discoveryBrief);
   }
 
-  const planning = new PlanningPipeline();
+  const planning = new PlanningPipeline({
+    llm: ctx.deps?.planningLlm,
+  });
   const input = buildPlanningInputFromRuntime({
     pack,
     assessment,

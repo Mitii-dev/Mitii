@@ -1,4 +1,6 @@
 /** Build RuntimeRunResult from through-turn pump outputs (start facade). */
+import { formatPlanAsAnswer } from "../../../modules/planning";
+import type { PlanArtifact } from "../../../modules/planning";
 import { runtimeRunResultSchema } from "../../contracts/output/RuntimeRunResult";
 import type { RuntimeRunResult } from "../../contracts/output/RuntimeRunResult";
 import type { RuntimeStartInput } from "../../contracts/input/RuntimeStartInput";
@@ -81,15 +83,31 @@ export async function assembleRuntimeStartResult(input: {
       plateId: decision.plateId,
     });
     through.store.setSlice("planFingerprint", planFingerprint);
+    const planArtifact = through.store.getSlice<Record<string, unknown>>(
+      "planArtifact",
+    );
+    const gatePayload = through.planGate.payload ?? {};
+    const clarificationPrompt =
+      typeof gatePayload.clarificationPrompt === "string"
+        ? gatePayload.clarificationPrompt
+        : undefined;
     const checkpointSaved = await saveRuntimeGateCheckpoint(deps, {
       runId,
       requestId: start.runId ?? runId,
       gateKind: through.planGate.kind ?? "plan_approval_required",
       reasonCodes: through.planGate.reasonCodes,
-      payload: { planFingerprint },
+      payload: {
+        planFingerprint,
+        ...(planArtifact ? { plan: planArtifact } : {}),
+        ...(clarificationPrompt ? { clarificationPrompt } : {}),
+      },
       storeSnapshot: through.store.snapshot(),
       liveStore: through.store,
     });
+    const planAnswer =
+      through.planGate.kind === "plan_approval_required" && planArtifact
+        ? formatPlanAsAnswer(planArtifact as unknown as PlanArtifact)
+        : undefined;
     return runtimeRunResultSchema.parse({
       schemaVersion: 1,
       runId,
@@ -102,6 +120,9 @@ export async function assembleRuntimeStartResult(input: {
       checkpointSaved: checkpointSaved || through.planGate.checkpointSaved,
       storeHydrated,
       planFingerprint,
+      ...(planArtifact ? { plan: planArtifact } : {}),
+      ...(clarificationPrompt ? { clarificationPrompt } : {}),
+      ...(planAnswer ? { answer: planAnswer } : {}),
       usage: usageSketch.usage,
       toolInvocations: usageSketch.toolInvocations,
       mcpServerIds: parity.mcpServerIds,

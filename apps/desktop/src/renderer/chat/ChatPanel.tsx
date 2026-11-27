@@ -12,6 +12,7 @@ export function ChatPanel({ m }: { m: AppModel }) {
     inCodeMode,
     accent,
     busy,
+    mode,
     onNewChat,
     error,
     suspension,
@@ -52,6 +53,7 @@ export function ChatPanel({ m }: { m: AppModel }) {
         <ApprovalCard
           suspension={suspension}
           busy={busy}
+          mode={mode}
           onApprove={onApproveSuspension}
           onDeny={onDenySuspension}
           onClarify={onClarifySuspension}

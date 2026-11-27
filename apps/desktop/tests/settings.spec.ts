@@ -87,6 +87,44 @@ describe('desktop settings', () => {
     expect(back.search.searxngBaseUrl).toBe('http://127.0.0.1:8080');
   });
 
+  it('enables semantic index when config embeddingSource is bundled', () => {
+    const settings = mitiiConfigFileToSettings({
+      embeddingSource: 'bundled',
+    });
+    expect(settings.semanticIndex.source).toBe('bundled');
+    expect(settings.semanticIndex.enabled).toBe(true);
+  });
+
+  it('aligns enabled=false + source=bundled defaults to enabled', () => {
+    const settings = mergeDesktopSettings({
+      semanticIndex: {
+        enabled: false,
+        source: 'bundled',
+        backend: 'bundled',
+        model: '',
+        dimensions: 0,
+        normalized: true,
+      },
+    });
+    expect(settings.semanticIndex.enabled).toBe(true);
+    expect(settings.semanticIndex.source).toBe('bundled');
+  });
+
+  it('keeps semantic off when source is disabled', () => {
+    const settings = mergeDesktopSettings({
+      semanticIndex: {
+        enabled: false,
+        source: 'disabled',
+        backend: 'disabled',
+        model: '',
+        dimensions: 0,
+        normalized: true,
+      },
+    });
+    expect(settings.semanticIndex.enabled).toBe(false);
+    expect(settings.semanticIndex.source).toBe('disabled');
+  });
+
   it('maps engine env for provider, sandbox, and search key', () => {
     const env = settingsToEngineEnv(
       mergeDesktopSettings({

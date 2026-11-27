@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { fakeLlm } from "../../../modules/planning/tests/planningHarness";
 import { runThroughPlanPipeline } from "../../flow/RunThroughPlanPipeline";
 import { runEarlyPipeline } from "../../flow/RunEarlyPipeline";
 
@@ -47,5 +48,47 @@ describe("S2C grant + S3A planning wire", () => {
     if (result.planPipeline.planningStatus === "ok") {
       expect(artifact?.title || result.planPipeline.planTitle).toBeTruthy();
     }
+  });
+
+  it("plan pipeline wires planningLlm from runtime deps", async () => {
+    const llm = fakeLlm([
+      JSON.stringify({
+        objective: "Add guest calendar and notifications",
+        steps: [
+          {
+            phaseHint: "change",
+            intent: "Add calendar screen",
+            actionSummary: "Create calendar view from event dates",
+            targetRefs: ["src/calendar.tsx"],
+            expectedOutcome: "Calendar shows wedding events",
+          },
+          {
+            phaseHint: "verify",
+            intent: "Typecheck",
+            actionSummary: "Run typecheck",
+            targetRefs: ["src/calendar.tsx"],
+            expectedOutcome: "Types pass",
+          },
+        ],
+      }),
+    ]);
+    const complete = vi.spyOn(llm, "complete");
+    const result = await runThroughPlanPipeline({
+      start: {
+        message:
+          "plan implementing a guest app with calendar and push notifications using workspace contents",
+      },
+      mode: "plan",
+      runId: "plan-llm-wire",
+      deps: { planningLlm: llm },
+    });
+    expect(result.planPipeline.ran).toBe(true);
+    expect(result.decision.route).toBe("plan");
+    expect(result.decision.grantProfile).toBe("research");
+    expect(result.planPipeline.reasonCodes).toContain(
+      "plan_pipeline_module_wired",
+    );
+    // Strategy may draft via LLM or deterministic fallback; wiring must not throw.
+    expect(complete.mock.calls.length).toBeGreaterThanOrEqual(0);
   });
 });

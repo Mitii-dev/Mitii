@@ -26,18 +26,31 @@ describe("evaluateGates", () => {
     });
   });
 
-  it("after_plan requires approval for agent visible execute", () => {
+  it("after_plan requires approval for agent visible execute with ready plan", () => {
     const verdict = evaluateGates("after_plan", {
       runId: "r1",
       mode: "agent",
       route: "execute",
       planningDepth: "visible",
       planGate: "required_before_execute",
+      hasReadyPlan: true,
     });
     expect(verdict).toMatchObject({
       action: "suspend",
       kind: "plan_approval_required",
     });
+  });
+
+  it("after_plan does not approve empty plan without ready artifact", () => {
+    const verdict = evaluateGates("after_plan", {
+      runId: "r1",
+      mode: "agent",
+      route: "execute",
+      planningDepth: "visible",
+      planGate: "required_before_execute",
+      hasReadyPlan: false,
+    });
+    expect(verdict?.kind).not.toBe("plan_approval_required");
   });
 
   it("after_plan prefers scope_fork clarify over plan approval", () => {

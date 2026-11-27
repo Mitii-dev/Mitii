@@ -178,7 +178,8 @@ export function useEditorTabs(options: UseEditorTabsOptions) {
     try {
       const result = await fetchGitDiff({ baseUrl, token, path });
       const content =
-        result.diff || '(no textual diff — binary or untracked)';
+        result.diff ||
+        '(no diff available — file missing, empty, or binary)';
       setTabs((prev) => {
         const without = prev.filter((t) => t.path !== tabPath);
         return [

@@ -1,6 +1,7 @@
 import { applyGate, evaluateGates } from "../../helpers/gates";
 import type { ApplyGateResult } from "../../helpers/gates";
 import { resolvePlanExit } from "../../helpers/plan";
+import type { PlanArtifact } from "../../../modules/planning";
 import type { RuntimeDecisionSketch } from "./5-Decide";
 import type { PlanPipelineSketch } from "./7-PlanPipeline";
 import type { StepContext } from "./StepContext";
@@ -29,6 +30,14 @@ export async function gatesAfterPlan(
       ? decision.planningDepth
       : ("none" as const);
 
+  const planArtifact = ctx.store.getSlice<PlanArtifact>("planArtifact");
+  const hollow =
+    Boolean(plan.hollowCheck && !plan.hollowCheck.ok) ||
+    (planGate === "required_before_execute" &&
+      planningDepth === "visible" &&
+      !planArtifact);
+  const hasReadyPlan = Boolean(planArtifact) && !hollow;
+
   const planExit =
     plan.planExit ??
     resolvePlanExit({
@@ -36,11 +45,11 @@ export async function gatesAfterPlan(
       route: decision.route,
       planGate,
       planningDepth,
-      hollow: Boolean(plan.hollowCheck && !plan.hollowCheck.ok),
+      hollow,
       planRan: true,
     });
 
-  if (plan.hollowCheck && !plan.hollowCheck.ok) {
+  if (hollow) {
     const verdict = evaluateGates("after_plan", {
       runId: ctx.store.getStore().runId,
       mode: ctx.mode,
@@ -48,6 +57,7 @@ export async function gatesAfterPlan(
       runDisposition: "clarification_required",
       planGate,
       hollowPlan: true,
+      hasReadyPlan: false,
     });
     if (verdict) {
       const result = await applyGate(
@@ -61,11 +71,23 @@ export async function gatesAfterPlan(
           storeSnapshot: ctx.store.snapshot(),
         },
       );
-      ctx.store.setSlice("lastGate", {
+      const enriched: ApplyGateResult = {
         ...result,
-        reasonCodes: [...result.reasonCodes, ...planExit.reasonCodes],
-      });
-      return result;
+        reasonCodes: [
+          ...result.reasonCodes,
+          ...planExit.reasonCodes,
+          "gate_plan_needed_clarify",
+        ],
+        payload: {
+          ...result.payload,
+          clarificationPrompt:
+            typeof result.payload.clarificationPrompt === "string"
+              ? result.payload.clarificationPrompt
+              : "A plan is needed before implementing this. Reply with any constraints, or say go ahead to draft and approve a plan.",
+        },
+      };
+      ctx.store.setSlice("lastGate", enriched);
+      return enriched;
     }
   }
 
@@ -87,6 +109,7 @@ export async function gatesAfterPlan(
     runDisposition: decision.runDisposition,
     planGate,
     planningDepth,
+    hasReadyPlan,
   });
 
   if (!verdict) return undefined;

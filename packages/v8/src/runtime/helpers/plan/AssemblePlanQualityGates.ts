@@ -28,6 +28,8 @@ export function assemblePlanQualityGates(
   input: AssemblePlanQualityGatesInput,
 ): AssemblePlanQualityGatesResult {
   const artifact = input.artifact;
+  // Visible plan gate must never approve an empty artifact — fail closed so
+  // hosts get clarify ("plan is needed") instead of empty plan_approval.
   const hollowCheck = artifact
     ? rejectHollowPlan({
         title: artifact.objective,
@@ -36,7 +38,8 @@ export function assemblePlanQualityGates(
           steps: phase.steps,
         })),
       })
-    : input.planningStatus === "drafted" ||
+    : input.planningDepth === "visible" ||
+        input.planningStatus === "drafted" ||
         input.planningStatus === "validated" ||
         input.planningStatus === "compacted"
       ? ({ ok: false, reasonCode: "plan_hollow_no_artifact" } as const)
@@ -75,8 +78,16 @@ export function assemblePlanQualityGates(
     input.mode === "agent" &&
     input.planningDepth === "visible";
 
+  // Plan mode already chose research→draft. A thin discovery floor must not
+  // convert a non-empty plan into hollow "plan is needed" clarify — that
+  // message is for agent+visible execute without an artifact. Keep fail-close
+  // when the artifact itself is hollow, or for agent visible quality misses.
+  const discoveryFailClosesHollow =
+    discoveryQualityFailed &&
+    (input.mode === "agent" || !hollowCheck.ok);
+
   const effectiveHollow =
-    !hollowCheck.ok || discoveryQualityFailed || qualityFailCloses;
+    !hollowCheck.ok || discoveryFailClosesHollow || qualityFailCloses;
 
   return {
     hollowCheck,

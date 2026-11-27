@@ -4,7 +4,7 @@ The planner: it turns evidence into a clear, step-by-step `PlanArtifact` when a 
 
 ## Does
 - Validates input and blocks when planning depth is `none`.
-- Picks a strategy with fixed rules (`follow_evidence`, `discover_and_plan`, `plan_from_ask`, `clarify`) — no strategy LLM.
+- Picks a strategy with fixed rules (`follow_evidence`, `discover_and_plan`, `plan_from_ask`, `clarify`) — no strategy LLM. In `mode=plan`, soft unclear/ambiguous does **not** force `clarify`; research runs first.
 - Drafts a deterministic skeleton from evidence, discovery brief, and skills.
 - Optionally uses one LLM call to draft Change + Verify steps, or to write clarify options (with a deterministic fallback).
 - Checks concreteness, applies working sets, and compacts the plan to budget.

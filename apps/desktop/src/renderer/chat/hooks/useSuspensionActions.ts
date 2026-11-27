@@ -4,10 +4,17 @@ import { useEffect } from 'react';
 import type { useChatThreadState } from './useChatThreadState.js';
 import type { useRunResume } from './useRunResume.js';
 import type { useComposerState } from './useComposerState.js';
+import { resolvePlanApprovalAction } from '../resolvePlanApprovalAction.js';
 
 export function useSuspensionActions(deps: Pick<
     ReturnType<typeof useChatThreadState>,
-    'suspension' | 'busy' | 'setSuspension'
+    | 'suspension'
+    | 'busy'
+    | 'setSuspension'
+    | 'setPendingPlan'
+    | 'setPendingPlanStrategy'
+    | 'setPendingTaskList'
+    | 'setCompletedPlanStepIds'
   > &
   Pick<
     ReturnType<typeof useRunResume>,
@@ -15,21 +22,44 @@ export function useSuspensionActions(deps: Pick<
   > &
   Pick<
     ReturnType<typeof useComposerState>,
-    'approvalMode' | 'pendingAutoContinue' | 'setPendingAutoContinue'
+    | 'approvalMode'
+    | 'pendingAutoContinue'
+    | 'setPendingAutoContinue'
+    | 'mode'
+    | 'setMode'
   >) {
   const {
     suspension,
     busy,
     setSuspension,
+    setPendingPlan,
+    setPendingPlanStrategy,
+    setPendingTaskList,
+    setCompletedPlanStepIds,
     runResume,
     approvalMode,
     pendingAutoContinue,
     setPendingAutoContinue,
+    mode,
+    setMode,
   } = deps;
 
   const onApproveSuspension = () => {
     if (!suspension) return;
     if (suspension.kind === 'plan_approval_required') {
+      // Plan/ask: keep the artifact for "Execute in Agent" — do not replate to
+      // execute/write. Agent mode alone resumes the mutation loop.
+      if (resolvePlanApprovalAction(mode) === 'keep_plan_only') {
+        setSuspension(null);
+        // Cancel the suspended agent gate without applying patches. pendingPlan
+        // from the suspend stream stays for PendingPlanBanner / Execute in Agent.
+        void runResume({
+          runId: suspension.runId,
+          planDecision: { decision: 'rejected' },
+        });
+        return;
+      }
+      setMode('agent');
       void runResume({
         runId: suspension.runId,
         planDecision: { decision: 'approved' },
@@ -57,6 +87,10 @@ export function useSuspensionActions(deps: Pick<
   const onDenySuspension = () => {
     if (!suspension) return;
     if (suspension.kind === 'plan_approval_required') {
+      setPendingPlan(null);
+      setPendingPlanStrategy(null);
+      setPendingTaskList(null);
+      setCompletedPlanStepIds(new Set());
       void runResume({
         runId: suspension.runId,
         planDecision: { decision: 'rejected' },

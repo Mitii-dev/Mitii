@@ -83,4 +83,18 @@ describe("selectDecisionPlate + anti-nag", () => {
     });
     expect(plate.route).toBe("clarify");
   });
+
+  it("plan mode does not early-clarify when anti-nag would ask", () => {
+    const plate = selectDecisionPlate({
+      mode: "plan",
+      primaryTaskIntent: "unclear",
+      clarityConfidence: "low",
+      planningHint: "none",
+      askUser: true,
+      difficulty: "simple",
+      risk: "low",
+    });
+    expect(plate.route).toBe("plan");
+    expect(plate.id).toBe("plan_visible_readonly");
+  });
 });

@@ -145,6 +145,21 @@ describe("selectDecisionPlate", () => {
     expect(plate.reasonCodes).toContain("continuity_bias_execute");
   });
 
+  it("skips visible plan gate for localized create with explicit paths", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "feature",
+      clarityConfidence: "high",
+      planningHint: "long",
+      askUser: false,
+      message:
+        "Complete redesign of priya-v1/index.html — create new-design.html",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.planningDepth).not.toBe("visible");
+    expect(plate.reasonCodes).toContain("plate_localized_skip_visible_plan");
+  });
+
   it("keeps ask-mode continue on research", () => {
     const plate = selectDecisionPlate({
       mode: "ask",
@@ -185,6 +200,24 @@ describe("selectDecisionPlate", () => {
     });
     expect(plate.route).toBe("plan");
     expect(plate.planningDepth).toBe("visible");
+  });
+
+  it("plan mode seals before anti-nag clarify on unclear ballot", () => {
+    const plate = selectDecisionPlate({
+      mode: "plan",
+      primaryTaskIntent: "unclear",
+      clarityConfidence: "low",
+      planningHint: "long",
+      askUser: true,
+      difficulty: "complex",
+      risk: "medium",
+    });
+    expect(plate.route).toBe("plan");
+    expect(plate.id).toBe("plan_visible_readonly");
+    expect(plate.grantProfile).toBe("research");
+    expect(plate.reasonCodes).toContain(
+      "plate_plan_mode_defers_anti_nag_clarify",
+    );
   });
 
   it("ask mode seals to answer even when planningHint is set", () => {

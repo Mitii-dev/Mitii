@@ -123,6 +123,13 @@ export const runtimeRunResultSchema = z
     /** Host Build freshness vs Store plan fingerprint. */
     planFresh: z.boolean().optional(),
     planFingerprint: z.string().min(1).optional(),
+    /**
+     * Plan artifact for plan_approval_required (host ApprovalCard).
+     * Kept loose so runtime does not re-own planning schemas.
+     */
+    plan: z.record(z.unknown()).optional(),
+    /** User-facing clarification question when gateKind is clarification_required. */
+    clarificationPrompt: z.string().min(1).max(2_000).optional(),
     /** True when applyGate / mutation path persisted a RuntimeGateCheckpoint. */
     checkpointSaved: z.boolean().optional(),
     /** True when resume hydrated Store slices from a prior snapshot. */

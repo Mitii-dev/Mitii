@@ -124,6 +124,31 @@ describe("resolvePlanStrategyRules", () => {
     expect(decision.skipDiscover).toBe(true);
   });
 
+  it("plan mode defers soft unclear to discover_and_plan instead of clarify", () => {
+    const decision = resolvePlanStrategyRules(
+      input({
+        mode: "plan",
+        route: "plan",
+        query:
+          "Can you plan more test cases to test the agent, unique cases users mostly use especially react",
+        evidence: {
+          ...input().evidence,
+          primaryIntent: "feature",
+          clarity: "unclear",
+          scope: "repository",
+          complexity: "complex",
+          recommendsPlanning: true,
+          targets: [],
+        },
+        buildEvidence: undefined,
+      }),
+    );
+
+    expect(decision.strategy).not.toBe("clarify");
+    expect(decision.skipDiscover).toBe(false);
+    expect(decision.strategy).toBe("discover_and_plan");
+  });
+
   it("resolves to plan_from_ask for a Quick exploration depth even with wide scope", () => {
     const decision = resolvePlanStrategyRules(
       input({

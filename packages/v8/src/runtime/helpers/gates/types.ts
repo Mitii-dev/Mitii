@@ -22,6 +22,8 @@ export interface GateContext {
   forceCampaignPhaseLock?: boolean;
   planStrategy?: string;
   hollowPlan?: boolean;
+  /** Non-hollow planArtifact present — required before plan_approval_required. */
+  hasReadyPlan?: boolean;
   /** Tool / budget / verify */
   needsGrantExpansion?: boolean;
   needsMutationApproval?: boolean;

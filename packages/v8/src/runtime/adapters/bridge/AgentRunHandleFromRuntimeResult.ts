@@ -23,6 +23,11 @@ export function createAgentRunHandleFromRuntimeResult(
   const suspensionKind =
     status === "suspended" ? mapSuspensionKind(runtime.gateKind) : undefined;
 
+  const planArtifact =
+    runtime.plan && typeof runtime.plan === "object"
+      ? (runtime.plan as AgentRunResult["plan"])
+      : undefined;
+
   const result: AgentRunResult = {
     schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
     runId: runtime.runId,
@@ -31,12 +36,14 @@ export function createAgentRunHandleFromRuntimeResult(
     route,
     planningDepth: mapPlanningDepth(runtime.planningDepth),
     answer:
-      status === "completed"
+      status === "completed" || status === "suspended"
         ? runtime.answer?.trim() ||
-          (runtime.reasonCodes.includes("runtime_model_empty_answer")
+          (status === "completed" &&
+          runtime.reasonCodes.includes("runtime_model_empty_answer")
             ? "Model returned an empty answer."
             : undefined)
         : undefined,
+    ...(planArtifact ? { plan: planArtifact } : {}),
     suspension:
       status === "suspended" && suspensionKind
         ? {
@@ -44,8 +51,12 @@ export function createAgentRunHandleFromRuntimeResult(
             rationale: suspensionRationaleFor(suspensionKind, runtime),
             clarificationPrompt:
               suspensionKind === "clarification_required"
-                ? "Please clarify how to proceed."
+                ? runtime.clarificationPrompt?.trim() ||
+                  "Please clarify how to proceed."
                 : undefined,
+            ...(suspensionKind === "plan_approval_required" && planArtifact
+              ? { plan: planArtifact }
+              : {}),
             ...(runtime.pendingApproval &&
             (suspensionKind === "approval_required" ||
               runtime.gateKind === "mutation_approval_required")

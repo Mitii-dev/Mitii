@@ -47,6 +47,11 @@ export function resolvePlanStrategy(params: {
     hasKnownFileSurfaces(params.input) &&
     !isRepairIntent(params.input) &&
     !isMediumOrLargerTask(params.input);
+  const deferredUnclearInPlanMode =
+    params.input.mode === "plan" &&
+    (params.input.evidence.clarity === "unclear" ||
+      params.input.evidence.clarity === "ambiguous") &&
+    decision.strategy !== "clarify";
   return {
     decision,
     source: "rules",
@@ -61,6 +66,9 @@ export function resolvePlanStrategy(params: {
       ...(knownPathsShortCircuit
         ? (["plan_strategy_known_paths"] as const)
         : []),
+      ...(deferredUnclearInPlanMode
+        ? (["plan_strategy_plan_mode_defers_unclear"] as const)
+        : []),
       ...(hasOutOfScopeBuildEvidence(params.input, decision)
         ? (["plan_build_evidence_out_of_scope"] as const)
         : []),
@@ -71,7 +79,8 @@ export function resolvePlanStrategy(params: {
 /**
  * The single strategy rule table. Always resolves — no LLM, no fallback.
  *
- *   clarity unclear/ambiguous                 -> clarify
+ *   clarity unclear/ambiguous (not plan mode) -> clarify
+ *   mode=plan + unclear/ambiguous             -> continue (discover/plan_from_ask)
  *   architecture-scale ask                    -> discover_and_plan (never follow_evidence)
  *   repair intent AND in-scope errors >= 1     -> follow_evidence
  *   repair + "fix all …" / wide package scope  -> follow_evidence
@@ -84,9 +93,12 @@ export function resolvePlanStrategy(params: {
 export function resolvePlanStrategyRules(
   input: PlanningParsedInput,
 ): PlanStrategyDecision {
+  // Plan mode: soft unclear/ambiguous must not skip research. Discover first;
+  // after_plan / discovery quality may still clarify for real forks.
   if (
-    input.evidence.clarity === "unclear" ||
-    input.evidence.clarity === "ambiguous"
+    input.mode !== "plan" &&
+    (input.evidence.clarity === "unclear" ||
+      input.evidence.clarity === "ambiguous")
   ) {
     return sanitizeStrategy(
       {

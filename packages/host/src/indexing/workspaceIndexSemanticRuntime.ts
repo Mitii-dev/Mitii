@@ -8,6 +8,7 @@ import {
   createLanceDbConnection,
   probeEmbeddingProvider,
   resolveHostEmbeddingProvider,
+  SEMANTIC_INDEX_DISABLED_REASON,
   type SemanticIndexSettings,
 } from './semanticIndex.js';
 import type { FullWorkspaceIndexResult } from './workspaceIndexTypes.js';
@@ -112,7 +113,7 @@ export async function resolveSemanticCandidate(
   if (!settings?.enabled) {
     return {
       status: 'unavailable',
-      reason: 'Semantic index is disabled or not configured.',
+      reason: SEMANTIC_INDEX_DISABLED_REASON,
     };
   }
 

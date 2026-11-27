@@ -61,6 +61,53 @@ describe("RuntimePipeline.start / resume", () => {
     expect(result.reasonCodes).toContain("runtime_resume_completed");
   });
 
+  it("plan mode does not early-clarify a vague multi-feature app ask", async () => {
+    const runtime = composeRuntime();
+    const result = await runtime.start({
+      start: {
+        message:
+          "Can you plan on implementing app for this wedding. Find all the contents. Need similar page with push events, live updates, calendar and notifications.",
+      },
+      mode: "plan",
+      runId: "rs-plan-no-early-clarify",
+    });
+    expect(result.route).toBe("plan");
+    expect(result.grantProfile).toBe("research");
+    expect(result.route).not.toBe("clarify");
+    // Soft unclear must not hollow-clarify with "plan is needed".
+    expect(result.gateKind).not.toBe("clarification_required");
+  });
+
+  it("plan mode drafts react test-case plans without hollow clarify", async () => {
+    const runtime = composeRuntime();
+    const result = await runtime.start({
+      start: {
+        message:
+          "Can you plan more test cases to test the agent I need unique with usesers modtly use especially react",
+      },
+      mode: "plan",
+      runId: "rs-plan-react-cases",
+    });
+    expect(result.route).toBe("plan");
+    expect(result.grantProfile).toBe("research");
+    expect(result.gateKind).not.toBe("clarification_required");
+    expect(result.status).toBe("completed");
+  });
+
+  it("resume keeps prior message with Clarification: marker", async () => {
+    const runtime = composeRuntime();
+    const result = await runtime.resume({
+      runId: "rs-clarify-keep-prompt",
+      decision: "clarify_answer",
+      clarifyAnswer: "use the events from requirement.txt",
+      message:
+        "plan implementing a wedding guest app with calendar and notifications",
+      mode: "plan",
+    });
+    expect(result.route).toBe("plan");
+    expect(result.reasonCodes).toContain("runtime_resume_completed");
+  });
+
   it("resume reject terminates", async () => {
     const runtime = composeRuntime();
     const result = await runtime.resume({

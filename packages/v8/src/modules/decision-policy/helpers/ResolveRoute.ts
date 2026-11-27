@@ -84,6 +84,20 @@ export function resolveRoute(params: {
     params.policyFactsFirst !== false &&
     isHighConfidenceUnderstanding(understanding);
 
+  // Plan mode seals before soft clarify — discovery owns grounding; after_plan
+  // gates may still clarify for hollow / material forks.
+  if (mode === "plan") {
+    reasonCodes.push("mode_plan_only");
+    if (isExplicitPlanRequest(message) || interaction === "plan") {
+      reasonCodes.push("explicit_plan_request");
+    }
+    return {
+      route: "plan",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
   if (
     !params.suppressClarification &&
     requiresClarification(understanding, message, mode, continuation)
@@ -104,18 +118,6 @@ export function resolveRoute(params: {
       message,
       reasonCodes,
     });
-  }
-
-  if (mode === "plan") {
-    reasonCodes.push("mode_plan_only");
-    if (isExplicitPlanRequest(message) || interaction === "plan") {
-      reasonCodes.push("explicit_plan_request");
-    }
-    return {
-      route: "plan",
-      runDisposition: "continue",
-      reasonCodes,
-    };
   }
 
   // agent mode

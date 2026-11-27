@@ -47,6 +47,25 @@ export function normalizeRelativePath(targetPath: string): string {
   return trimmed;
 }
 
+/** Drop a redundant leading workspace folder segment (…/wedding + wedding/a → a). */
+export function stripRedundantWorkspaceFolderPrefix(
+  relativePath: string,
+  workspaceRoot: string,
+): string {
+  if (!relativePath || relativePath === ".") return relativePath;
+  const folder = path.basename(path.resolve(workspaceRoot)).replace(/\\/g, "/");
+  if (!folder || folder === "." || folder === "/" || folder === "") {
+    return relativePath;
+  }
+  if (relativePath === folder) return ".";
+  const prefix = `${folder}/`;
+  if (relativePath.startsWith(prefix)) {
+    const rest = relativePath.slice(prefix.length);
+    return rest.length > 0 ? rest : ".";
+  }
+  return relativePath;
+}
+
 export function isPathWithinScopes(
   relativePath: string,
   pathScopes: readonly string[],
@@ -192,7 +211,12 @@ export async function resolveContainedPath(params: {
     });
   }
 
-  const relativePath = normalizeRelativePath(params.requestedPath);
+  // Models often prefix paths with the workspace folder name
+  // (workspace=…/wedding + path=wedding/priya-v1/x → nested wedding/wedding/…).
+  const relativePath = stripRedundantWorkspaceFolderPrefix(
+    normalizeRelativePath(params.requestedPath),
+    absoluteRoot,
+  );
 
   if (!isPathWithinScopes(relativePath, params.pathScopes)) {
     throw new PathContainmentError(

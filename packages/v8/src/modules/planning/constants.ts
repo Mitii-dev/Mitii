@@ -109,6 +109,7 @@ export const PLANNING_REASON_CODES = [
   "plan_working_set_empty",
   "plan_strategy_known_paths",
   "plan_strategy_medium_bounded_discover",
+  "plan_strategy_plan_mode_defers_unclear",
   "plan_steps_concrete",
   "plan_steps_missing_targets",
   "plan_steps_vague_targets",

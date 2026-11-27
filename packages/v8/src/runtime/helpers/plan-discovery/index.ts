@@ -15,6 +15,12 @@ export type {
   RunDiscoveryPassInput,
   RunDiscoveryPassResult,
 } from "./RunDiscoveryPass";
+export {
+  pickRootPeekPaths,
+  peekDiscoveryFromWorkspaceRoot,
+  discoveryQueryGlobHints,
+} from "./DiscoveryRootPeeks";
+export type { DiscoveryRootPeekResult } from "./DiscoveryRootPeeks";
 
 export {
   requiresPlanDiscoveryQualityFloor,

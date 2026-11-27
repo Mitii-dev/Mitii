@@ -63,6 +63,9 @@ export async function executeRuntimeResume(
   );
 
   if (plan.terminal) {
+    // Drop the gate checkpoint so a later host action cannot resume execute
+    // after the user kept/rejected the plan without building.
+    await input.deps?.checkpointStore?.delete?.(parsed.runId);
     return runtimeRunResultSchema.parse({
       schemaVersion: 1,
       runId: parsed.runId,
@@ -98,17 +101,23 @@ export async function executeRuntimeResume(
   const priorCheckpoint = await input.deps?.checkpointStore?.load?.(
     parsed.runId,
   );
-  const message =
-    parsed.clarifyAnswer?.trim() ||
-    parsed.guidance?.trim() ||
-    input.message?.trim() ||
-    carry?.message?.trim() ||
-    "";
+  const priorMessage =
+    input.message?.trim() || carry?.message?.trim() || "";
+  const clarifyAnswer = parsed.clarifyAnswer?.trim();
+  const guidance = parsed.guidance?.trim();
+  // Keep the original ask when clarifying — alone, the answer is too thin to
+  // re-route / re-plan. Format matches hasResolvedClarification ("\nClarification:").
+  const message = clarifyAnswer
+    ? priorMessage
+      ? `${priorMessage}\nClarification: ${clarifyAnswer}`
+      : `Clarification: ${clarifyAnswer}`
+    : guidance || priorMessage;
 
   if (!message) {
     throw new Error("runtime_resume_missing_message");
   }
 
+  // Host mode wins when the UI switches plan/ask/agent on resume.
   const mode = input.mode ?? carry?.mode ?? "agent";
   let hydrateSnapshot = readStoreSnapshotFromCheckpoint(priorCheckpoint);
   const replateCodes: string[] = [];

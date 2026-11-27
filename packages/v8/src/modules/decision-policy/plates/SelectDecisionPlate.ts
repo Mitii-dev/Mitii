@@ -2,6 +2,7 @@ import { applyAntiNagAsk } from "../helpers/ApplyAntiNagAsk";
 import { applyContinuityBias } from "../helpers/ApplyContinuityBias";
 import type { EndingPosture } from "../../request-understanding";
 import { mapPlanningHintToDepth } from "../helpers/MapPlanningHintToDepth";
+import { extractExplicitFilePaths } from "../helpers/ResolveFastPath";
 import {
   looksLikeAgentExecuteContinue,
   looksLikeAgentMutationRequest,
@@ -53,17 +54,23 @@ export function selectDecisionPlate(
     turnKind: input.turnKind,
   });
 
+  // Plan mode seals first: discover → draft → after_plan gates. Soft ballot
+  // clarify must not skip research with a tool-less handoff.
+  if (input.mode === "plan") {
+    return {
+      ...planVisiblePlate,
+      reasonCodes: [
+        ...planVisiblePlate.reasonCodes,
+        ...nag.reasonCodes,
+        ...(nag.askUser ? ["plate_plan_mode_defers_anti_nag_clarify"] : []),
+      ],
+    };
+  }
+
   if (nag.askUser) {
     return {
       ...clarifyPlate,
       reasonCodes: [...clarifyPlate.reasonCodes, ...nag.reasonCodes],
-    };
-  }
-
-  if (input.mode === "plan") {
-    return {
-      ...planVisiblePlate,
-      reasonCodes: [...planVisiblePlate.reasonCodes, ...nag.reasonCodes],
     };
   }
 
@@ -171,15 +178,38 @@ export function selectDecisionPlate(
   const depthFromHint = mapPlanningHintToDepth(input.planningHint);
   const depthReason = `planning_hint_to_${depthFromHint}`;
 
+  // Clear single-file create/edit asks should not force an empty visible plan
+  // gate — execute directly (matches ResolvePlanningDepth fast_path spirit).
+  const explicitPaths =
+    typeof input.message === "string"
+      ? extractExplicitFilePaths(input.message)
+      : [];
+  const localizedCreate =
+    explicitPaths.length > 0 &&
+    explicitPaths.length <= 4 &&
+    typeof input.message === "string" &&
+    looksLikeAgentMutationRequest(input.message) &&
+    input.risk !== "high" &&
+    input.risk !== "critical";
+
   if (
-    depthFromHint === "visible" ||
-    input.risk === "high" ||
-    input.risk === "critical"
+    (depthFromHint === "visible" ||
+      input.risk === "high" ||
+      input.risk === "critical") &&
+    !localizedCreate
   ) {
     return withNag(executeVisiblePlate, [
       ...nag.reasonCodes,
       ...continuity.reasonCodes,
       depthReason,
+    ]);
+  }
+  if (localizedCreate && depthFromHint === "visible") {
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      ...continuity.reasonCodes,
+      depthReason,
+      "plate_localized_skip_visible_plan",
     ]);
   }
   if (depthFromHint === "internal") {

@@ -5,6 +5,8 @@ import type { DesktopSuspension } from '../../shared/suspension.js';
 interface ApprovalCardProps {
   suspension: DesktopSuspension;
   busy?: boolean;
+  /** Composer mode — plan/ask keep the plan; agent resumes execute. */
+  mode?: string;
   onApprove: () => void;
   onDeny: () => void;
   onClarify: (answer: string) => void;
@@ -15,6 +17,7 @@ interface ApprovalCardProps {
 export function ApprovalCard({
   suspension,
   busy,
+  mode,
   onApprove,
   onDeny,
   onClarify,
@@ -26,6 +29,7 @@ export function ApprovalCard({
   const isPlan = suspension.kind === 'plan_approval_required';
   const isContinue = suspension.kind === 'continue_required';
   const isGrant = suspension.kind === 'grant_expansion_required';
+  const keepPlanOnly = isPlan && mode !== 'agent';
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
   const planSteps = suspension.plan?.steps ?? [];
@@ -37,7 +41,9 @@ export function ApprovalCard({
   const title = isClarify
     ? 'Clarification needed'
     : isPlan
-      ? 'Plan approval required'
+      ? keepPlanOnly
+        ? 'Plan ready'
+        : 'Plan approval required'
       : isContinue
         ? 'Continue to finish edits'
         : isGrant
@@ -53,7 +59,9 @@ export function ApprovalCard({
         'I need a bit more detail before continuing.')
     : (isContinue
         ? suspension.continuePrompt ?? suspension.rationale
-        : suspension.rationale) ??
+        : keepPlanOnly
+          ? 'Review the plan. Keep it for later, or switch to Agent and approve to build.'
+          : suspension.rationale) ??
       (isPlan
         ? 'Review the plan, then approve to continue or reject to stop.'
         : 'I need a bit more detail before continuing.');
@@ -208,10 +216,14 @@ export function ApprovalCard({
               disabled={busy}
               onClick={onApprove}
             >
-              {isPlan ? 'Approve plan' : 'Approve'}
+              {isPlan
+                ? keepPlanOnly
+                  ? 'Keep plan'
+                  : 'Approve & build'
+                : 'Approve'}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={onDeny}>
-              Deny
+              {keepPlanOnly ? 'Discard' : 'Deny'}
             </button>
             <button type="button" className="btn-ghost" disabled={busy} onClick={onStop}>
               Stop
