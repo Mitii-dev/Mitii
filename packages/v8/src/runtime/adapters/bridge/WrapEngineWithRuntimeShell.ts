@@ -97,8 +97,18 @@ export function wrapEngineWithRuntimeShell<T extends RuntimeShellEngineSurface>(
       });
 
       if (adapted.clarifyAnswer) {
+        const prior =
+          session?.message?.trim() ||
+          stored?.message?.trim() ||
+          adapted.message?.trim() ||
+          "";
+        const answer = adapted.clarifyAnswer.trim();
         sessions.set(runId, {
-          message: adapted.clarifyAnswer,
+          message: prior
+            ? prior.includes("\nClarification:")
+              ? prior
+              : `${prior}\nClarification: ${answer}`
+            : answer,
           mode: session?.mode ?? stored?.mode ?? "agent",
         });
       }

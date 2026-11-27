@@ -13,6 +13,7 @@ import { settleToolCallWithCache } from "../../helpers/turn/SettleToolCallWithCa
 import { applyTurnLoopMutationResume } from "../../helpers/turn/ApplyTurnLoopMutationResume";
 import { resolveMaxPortTurns } from "../../helpers/turn/ResolveMaxPortTurns";
 import {
+  extractProcessExitCode,
   formatToolMessageContent,
   parseRecoveredArgs,
   previewToolOutput,
@@ -431,10 +432,14 @@ export async function turnLoopWithPorts(
           failReason,
           toolOk,
         );
+        const processExitCode = extractProcessExitCode(cached?.output);
         recordToolSummary(toolSummaries, invocationId, {
           summary,
           ...(failReason ? { reasonCode: failReason.slice(0, 80) } : {}),
           ...(outputPreview ? { outputPreview } : {}),
+          ...(typeof processExitCode === "number"
+            ? { exitCode: processExitCode }
+            : {}),
         });
         if (sink) {
           pushRuntimeToolCompletedEvent(sink, {

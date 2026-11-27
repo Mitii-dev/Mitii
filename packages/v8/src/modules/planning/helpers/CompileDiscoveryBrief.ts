@@ -35,7 +35,11 @@ const MANIFEST_CONFIG =
 export function compileDiscoveryBrief(
   input: DiscoveryObservation,
 ): DiscoveryBrief {
-  const parsed = discoveryObservationSchema.parse(input);
+  // Hosts may pass the raw user prompt as objective; clamp before parse.
+  const parsed = discoveryObservationSchema.parse({
+    ...input,
+    objective: (input.objective ?? "").trim().slice(0, 1_000) || "Discover",
+  });
   const filesRead = uniqueFiles(parsed.filesRead);
   const searchFiles = uniqueByPath(
     parsed.searchHits.map((hit) => ({

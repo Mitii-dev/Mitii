@@ -155,6 +155,39 @@ describe('desktop settings', () => {
     );
   });
 
+  it('defaults OS sandbox on when unset so selective verify is fail-closed', () => {
+    const env = settingsToEngineEnv(
+      mergeDesktopSettings({
+        safety: {
+          approvalMode: 'never',
+          sandbox: {
+            enabled: null,
+            network: null,
+            backend: 'auto',
+          },
+        },
+      }),
+    );
+    expect(env.MITII_SANDBOX).toBe('1');
+    expect(env.MITII_SANDBOX_NETWORK).toBe('deny');
+  });
+
+  it('allows explicit sandbox disable', () => {
+    const env = settingsToEngineEnv(
+      mergeDesktopSettings({
+        safety: {
+          approvalMode: 'safe',
+          sandbox: {
+            enabled: false,
+            network: 'deny',
+            backend: 'auto',
+          },
+        },
+      }),
+    );
+    expect(env.MITII_SANDBOX).toBe('0');
+  });
+
   it('normalizes Ollama cloud size tags into MITII_MODEL', () => {
     const env = settingsToEngineEnv(
       mergeDesktopSettings({

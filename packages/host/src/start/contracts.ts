@@ -123,6 +123,7 @@ export type PrepareStartInputOptions = z.infer<
   approvedPlan?: MitiiStartInput['approvedPlan'];
   approvedPlanStrategy?: MitiiStartInput['approvedPlanStrategy'];
   taskList?: MitiiStartInput['taskList'];
+  completedPlanStepIds?: MitiiStartInput['completedPlanStepIds'];
   environment?: MitiiStartInput['environment'];
   budget?: MitiiStartInput['budget'];
   loopPolicy?: MitiiStartInput['loopPolicy'];

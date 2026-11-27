@@ -173,21 +173,33 @@ function grantForApprovedSettle(decision: unknown): GrantSurface {
           maximumWorkspaceEffect?: GrantSurface["maximumWorkspaceEffect"];
           allowedEffects?: string[];
           pathScopes?: string[];
+          commandRules?: GrantSurface["commandRules"];
         })
       : undefined;
   if (compiled?.allowedTools && compiled.allowedTools.length > 0) {
     return {
       allowedTools: [...compiled.allowedTools],
       maximumWorkspaceEffect: compiled.maximumWorkspaceEffect ?? "write",
-      allowedEffects: [...(compiled.allowedEffects ?? ["workspace_write"])],
+      allowedEffects: [
+        ...(compiled.allowedEffects ?? ["workspace_write"]),
+      ],
       approvalMode: "never",
       pathScopes: [...(compiled.pathScopes ?? [])],
+      ...(compiled.commandRules?.length
+        ? { commandRules: compiled.commandRules }
+        : {}),
     };
   }
   return {
-    allowedTools: ["apply_patch", "delete_file", "move_file", "run_command"],
+    allowedTools: [
+      "apply_patch",
+      "delete_file",
+      "move_file",
+      "run_command",
+      "run_readonly_command",
+    ],
     maximumWorkspaceEffect: "write",
-    allowedEffects: ["workspace_write"],
+    allowedEffects: ["workspace_write", "process_execute"],
     approvalMode: "never",
     pathScopes: [],
   };

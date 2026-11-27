@@ -25,6 +25,7 @@ export {
   deriveTaskListAfterPlan,
   beginDiscoveryTaskList,
   replaceDiscoveryWithExecution,
+  seedExecutionTaskListFromObjective,
 } from "./DeriveTaskListAfterPlan";
 export type { DeriveTaskListAfterPlanResult } from "./DeriveTaskListAfterPlan";
 export { emitPlanPhaseTelemetry } from "./EmitPlanPhaseTelemetry";

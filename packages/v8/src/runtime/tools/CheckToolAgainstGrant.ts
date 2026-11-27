@@ -11,6 +11,16 @@ export interface GrantSurface {
   pathScopes?: string[];
   readPaths?: string[];
   writePaths?: string[];
+  /**
+   * Argv-only process prefixes for run_readonly_command / run_command.
+   * Must survive GrantSurface → ToolGrant or every shell call is
+   * command_not_allowed.
+   */
+  commandRules?: ReadonlyArray<{
+    prefixes: readonly string[];
+    allowShellMetacharacters?: boolean;
+    maxOutputBytes?: number;
+  }>;
 }
 
 export interface ToolGrantCheckResult {

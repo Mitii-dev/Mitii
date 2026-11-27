@@ -104,6 +104,13 @@ function approvalArgumentsText(
   }
 }
 
+function isHollowPlanNeed(suspension: SuspensionPayload): boolean {
+  if (suspension.clarifyOrigin === 'hollow_plan') return true;
+  if (suspension.kind !== 'clarification_required') return false;
+  const text = `${suspension.clarificationPrompt ?? ''} ${suspension.rationale ?? ''}`.toLowerCase();
+  return text.includes('plan needed') || text.includes('plan is needed');
+}
+
 export function ApprovalCards({
   suspension,
   clarifyText,
@@ -117,6 +124,7 @@ export function ApprovalCards({
 }: ApprovalCardsProps) {
   const [planExpanded, setPlanExpanded] = useState(true);
   const isClarify = suspension.kind === 'clarification_required';
+  const isHollowPlan = isClarify && isHollowPlanNeed(suspension);
   const isPlan = suspension.kind === 'plan_approval_required';
   const isContinue = suspension.kind === 'continue_required';
   const isGrantExpansion = suspension.kind === 'grant_expansion_required';
@@ -132,32 +140,35 @@ export function ApprovalCards({
   const fallbackPlanSteps = extractListSection(planText, 'Plan', 8);
   const grantPaths = suspension.grantExpansion?.extraPaths ?? [];
 
-  const prompt =
-    shortClarifyText(
-      isContinue
-        ? suspension.continuePrompt ?? suspension.rationale
-        : suspension.clarificationPrompt,
-    ) ??
-    (suspension.rationale && !/^mode=/.test(suspension.rationale)
-      ? shortClarifyText(suspension.rationale)
-      : undefined) ??
-    (isPlan
-      ? 'Review the plan, then approve to continue or reject to stop.'
-      : isContinue
-        ? 'We need a bit more research before we can start implementing. Mind if we keep looking?'
-        : isGrantExpansion
-          ? 'Expand workspace access for additional paths, or keep the current grant.'
-          : 'I need a bit more detail before continuing.');
+  const prompt = isHollowPlan
+    ? 'Review, then build.'
+    : shortClarifyText(
+        isContinue
+          ? suspension.continuePrompt ?? suspension.rationale
+          : suspension.clarificationPrompt,
+      ) ??
+      (suspension.rationale && !/^mode=/.test(suspension.rationale)
+        ? shortClarifyText(suspension.rationale)
+        : undefined) ??
+      (isPlan
+        ? 'Review the plan, then build.'
+        : isContinue
+          ? 'We need a bit more research before we can start implementing. Mind if we keep looking?'
+          : isGrantExpansion
+            ? 'Expand workspace access for additional paths, or keep the current grant.'
+            : 'I need a bit more detail before continuing.');
 
-  const title = isClarify
-    ? 'Clarification needed'
-    : isPlan
-      ? 'Plan approval required'
-      : isContinue
-        ? 'A bit more research needed'
-        : isGrantExpansion
-          ? 'Workspace access expansion'
-          : 'Approval required';
+  const title = isHollowPlan
+    ? 'Plan'
+    : isClarify
+      ? 'Clarification needed'
+      : isPlan
+        ? 'Plan'
+        : isContinue
+          ? 'A bit more research needed'
+          : isGrantExpansion
+            ? 'Workspace access expansion'
+            : 'Approval required';
 
   return (
     <div className="card approval-card">
@@ -282,7 +293,20 @@ export function ApprovalCards({
           {compactText(approval.proposedText, 1200)}
         </pre>
       ) : null}
-      {isClarify ? (
+      {isHollowPlan ? (
+        <div className="card-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => onSubmitClarify('go ahead')}
+          >
+            Build
+          </button>
+          <button type="button" className="btn ghost" onClick={onStop}>
+            Stop
+          </button>
+        </div>
+      ) : isClarify ? (
         <>
           {options.length > 0 ? (
             <div className="clarify-options" role="group" aria-label="Choices">
@@ -360,10 +384,10 @@ export function ApprovalCards({
       ) : (
         <div className="card-actions">
           <button type="button" className="btn" onClick={onApprove}>
-            {isPlan ? 'Approve plan' : 'Approve'}
+            {isPlan ? 'Build' : 'Approve'}
           </button>
           <button type="button" className="btn ghost" onClick={onDeny}>
-            {isPlan ? 'Reject plan' : 'Deny'}
+            {isPlan ? 'Discard' : 'Deny'}
           </button>
           {!isPlan && approval?.approvalId ? (
             <button

@@ -47,12 +47,10 @@ export function useSuspensionActions(deps: Pick<
   const onApproveSuspension = () => {
     if (!suspension) return;
     if (suspension.kind === 'plan_approval_required') {
-      // Plan/ask: keep the artifact for "Execute in Agent" — do not replate to
-      // execute/write. Agent mode alone resumes the mutation loop.
+      // Build → agent + approve. keep_plan_only is unused for the primary CTA;
+      // PendingPlanBanner still covers history-restored plans.
       if (resolvePlanApprovalAction(mode) === 'keep_plan_only') {
         setSuspension(null);
-        // Cancel the suspended agent gate without applying patches. pendingPlan
-        // from the suspend stream stays for PendingPlanBanner / Execute in Agent.
         void runResume({
           runId: suspension.runId,
           planDecision: { decision: 'rejected' },

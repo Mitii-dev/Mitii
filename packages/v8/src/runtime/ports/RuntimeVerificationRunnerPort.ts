@@ -14,7 +14,10 @@ export interface RuntimeVerificationRunnerPort {
   ): Promise<RuntimeVerificationOutcome>;
 }
 
-/** Default inline adapter until VerificationRunner module wires hosts. */
+/**
+ * Default inline adapter when hosts do not wire VerificationPipeline.
+ * Must not report "passed" — that produced hollow verified_success events.
+ */
 export function createInlineVerificationRunner(): RuntimeVerificationRunnerPort {
   return {
     async run(input) {
@@ -27,12 +30,14 @@ export function createInlineVerificationRunner(): RuntimeVerificationRunnerPort 
         };
       }
       return {
-        status: "passed",
-        reasonCodes: ["verification_runner_inline"],
-        checksRun:
-          "checks" in input && Array.isArray(input.checks)
-            ? [...input.checks]
-            : ["diagnostics"],
+        status: "unavailable",
+        reasonCodes: [
+          "verification_runner_inline",
+          "verification_runner_needs_pipeline",
+        ],
+        checksRun: [],
+        summary:
+          "Inline stub only — host VerificationPipeline not wired; no checks ran",
       };
     },
   };

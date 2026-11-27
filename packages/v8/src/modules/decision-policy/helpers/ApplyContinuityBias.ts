@@ -16,6 +16,8 @@ export interface ContinuityBiasInput {
   interactionIntent?: "question" | "plan" | "act" | "help" | "unknown";
   primaryTaskIntent?: string;
   secondaryTaskIntents?: readonly string[];
+  /** Host/runtime has an open execution checklist — prefer next slice. */
+  openExecutionChecklist?: boolean;
 }
 
 export interface ContinuityBiasResult {
@@ -70,13 +72,25 @@ export function applyContinuityBias(
   if (!isContinuationTurnKind(input.turnKind)) {
     return { reasonCodes: [] };
   }
+
+  const wantsAct = stanceWantsAct(input);
+  const pureQuestion = stancePureQuestion(input);
+
+  // Open checklist is the campaign desk: Continue/next means execute the
+  // next open item — not re-plan or re-research — unless the user is clearly
+  // asking a read-only question about the work.
+  if (input.openExecutionChecklist === true && !pureQuestion) {
+    return {
+      preferredRoute: "execute",
+      reasonCodes: ["continuity_open_checklist"],
+    };
+  }
+
   if (!input.endingPosture) {
     return { reasonCodes: [] };
   }
 
   const posture = input.endingPosture;
-  const wantsAct = stanceWantsAct(input);
-  const pureQuestion = stancePureQuestion(input);
 
   if (OPEN_WORK_POSTURES.has(posture)) {
     if (wantsAct) {

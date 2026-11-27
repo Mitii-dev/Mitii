@@ -22,8 +22,9 @@ export function useThreadActions(deps: Pick<
   Pick<
     ReturnType<typeof useChatThreadState>,
     'setSuspension' | 'threadId' | 'tokenUsageRef' | 'setMessages' | 'setThreadId'
-    | 'setTokenUsage' | 'setHistory' | 'setPendingPlan' | 'setPendingPlanStrategy'
-    | 'setPendingTaskList' | 'setCompletedPlanStepIds' | 'history'
+    | 'setTokenUsage' | 'setHistory'     | 'setPendingPlan' | 'setPendingPlanStrategy'
+    | 'setPendingTaskList' | 'setCompletedPlanStepIds'
+    | 'setPendingNextActionPrompt' | 'history'
   > &
   Pick<
     ReturnType<typeof useChatPersistence>,
@@ -50,6 +51,7 @@ export function useThreadActions(deps: Pick<
     setPendingPlanStrategy,
     setPendingTaskList,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     history,
     persistTokenUsageOnly,
     engine,
@@ -109,6 +111,20 @@ export function useThreadActions(deps: Pick<
     );
     setPendingTaskList(
       (active?.pendingTaskList as TaskList | undefined) ?? null,
+    );
+    setCompletedPlanStepIds(
+      new Set(
+        Array.isArray(active?.completedPlanStepIds)
+          ? active.completedPlanStepIds.filter(
+              (id): id is string => typeof id === 'string',
+            )
+          : [],
+      ),
+    );
+    setPendingNextActionPrompt(
+      typeof active?.pendingNextActionPrompt === 'string'
+        ? active.pendingNextActionPrompt
+        : null,
     );
     setTokenUsage(
       tokenUsageFromThread(

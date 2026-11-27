@@ -20,9 +20,15 @@ import {
 import { breakdownFromPromptReady } from '../../../shared/contextUsage.js';
 import {
   collectMutatedPathsFromEvent,
+  isSuccessfulProcessMutationEvent,
   type DesktopFileChanges,
 } from '../../../shared/fileChanges.js';
-import { extractAssistantText, finalizeAssistantText, fetchFileChanges } from '../../api.js';
+import {
+  extractAssistantText,
+  finalizeAssistantText,
+  fetchFileChanges,
+  fetchGitStatus,
+} from '../../api.js';
 import type { useChatThreadState } from './useChatThreadState.js';
 import type { useComposerState } from './useComposerState.js';
 import type { useShellUiState } from '../../shell/hooks/useShellUiState.js';
@@ -33,7 +39,7 @@ export function useRunStream(deps: Pick<
     ReturnType<typeof useChatThreadState>,
     'tokenUsageRef' | 'setTokenUsage' | 'setMessages' | 'setPendingTaskList'
     | 'setCompletedPlanStepIds' | 'setSuspension' | 'setPendingPlan'
-    | 'setPendingPlanStrategy'
+    | 'setPendingPlanStrategy' | 'setPendingNextActionPrompt'
   > &
   Pick<
     ReturnType<typeof useComposerState>,
@@ -56,6 +62,7 @@ export function useRunStream(deps: Pick<
     setSuspension,
     setPendingPlan,
     setPendingPlanStrategy,
+    setPendingNextActionPrompt,
     pilotAutoContinueStreakRef,
     approvalModeRef,
     setPendingAutoContinue,
@@ -74,10 +81,14 @@ export function useRunStream(deps: Pick<
       activity: DesktopActivityItem[];
       suspension: DesktopSuspension | null;
       mutatedPaths: string[];
+      processMutation: boolean;
       tokenUsage: TokenUsageState;
       plan?: PlanArtifact;
       planStrategy?: PlanStrategyDecision;
       taskList?: TaskList;
+      completedPlanStepIds?: string[];
+      nextActionPrompt?: string;
+      pendingCount?: number;
     }> => {
       let assistant = '';
       let activity: DesktopActivityItem[] = [];
@@ -85,7 +96,11 @@ export function useRunStream(deps: Pick<
       let resultPlan: PlanArtifact | undefined;
       let resultPlanStrategy: PlanStrategyDecision | undefined;
       let resultTaskList: TaskList | undefined;
+      let resultCompletedIds: string[] | undefined;
+      let resultNextActionPrompt: string | undefined;
+      let resultPendingCount: number | undefined;
       const mutated = new Set<string>();
+      let processMutation = false;
       let usage: TokenUsageState = { ...tokenUsageRef.current, live: true };
 
       const pushUsage = (next: TokenUsageState) => {
@@ -169,6 +184,9 @@ export function useRunStream(deps: Pick<
           }
           const writePaths = collectMutatedPathsFromEvent(line.event);
           for (const path of writePaths) mutated.add(path);
+          if (isSuccessfulProcessMutationEvent(line.event)) {
+            processMutation = true;
+          }
           // Mid-stream: refresh explorer/SCM as soon as write tools complete.
           if (isToolCompleted(line.event) && writePaths.length > 0) {
             pilotAutoContinueStreakRef.current = 0;
@@ -214,6 +232,9 @@ export function useRunStream(deps: Pick<
           resultPlan = extracted.plan;
           resultPlanStrategy = extracted.planStrategy;
           resultTaskList = extracted.taskList;
+          resultCompletedIds = extracted.completedPlanStepIds;
+          resultNextActionPrompt = extracted.nextAction?.prompt;
+          resultPendingCount = extracted.progress?.pendingCount;
           // Don't paint PlanFollow from a clarify-only placeholder plan —
           // wait for a concrete post-scope / approved plan.
           const clarifyOnly =
@@ -224,6 +245,17 @@ export function useRunStream(deps: Pick<
             if (resultTaskList) setPendingTaskList(resultTaskList);
           } else if (resultTaskList) {
             setPendingTaskList(resultTaskList);
+          }
+          if (resultCompletedIds?.length) {
+            setCompletedPlanStepIds(new Set(resultCompletedIds));
+          }
+          if (resultNextActionPrompt) {
+            setPendingNextActionPrompt(resultNextActionPrompt);
+          } else if (
+            typeof resultPendingCount === 'number' &&
+            resultPendingCount === 0
+          ) {
+            setPendingNextActionPrompt(null);
           }
           if (options?.formatPlanAnswer) {
             assistant = resolvePlanDisplayText({
@@ -245,21 +277,56 @@ export function useRunStream(deps: Pick<
         activity,
         suspension: nextSuspension,
         mutatedPaths: [...mutated],
+        processMutation,
         tokenUsage: { ...usage, live: false },
         ...(resultPlan ? { plan: resultPlan } : {}),
         ...(resultPlanStrategy ? { planStrategy: resultPlanStrategy } : {}),
         ...(resultTaskList ? { taskList: resultTaskList } : {}),
+        ...(resultCompletedIds?.length
+          ? { completedPlanStepIds: resultCompletedIds }
+          : {}),
+        ...(resultNextActionPrompt
+          ? { nextActionPrompt: resultNextActionPrompt }
+          : {}),
+        ...(typeof resultPendingCount === 'number'
+          ? { pendingCount: resultPendingCount }
+          : {}),
       };
     },
     [],
   );
 
   const resolveFileChanges = useCallback(
-    async (paths: string[]): Promise<DesktopFileChanges | undefined> => {
-      if (!engine || paths.length === 0) return undefined;
+    async (
+      paths: string[],
+      options?: {
+        beforePaths?: string[];
+        sinceMs?: number;
+        /** Force dirty-set union even when write paths are empty. */
+        includeDirtyDelta?: boolean;
+      },
+    ): Promise<DesktopFileChanges | undefined> => {
+      if (!engine) return undefined;
+      const includeDelta =
+        options?.includeDirtyDelta === true ||
+        Boolean(options?.beforePaths) ||
+        typeof options?.sinceMs === 'number';
+      if (paths.length === 0 && !includeDelta) return undefined;
       try {
-        return await fetchFileChanges({ ...engine, paths });
+        return await fetchFileChanges({
+          ...engine,
+          paths,
+          ...(options?.beforePaths?.length
+            ? { beforePaths: options.beforePaths }
+            : includeDelta
+              ? { beforePaths: options?.beforePaths ?? [] }
+              : {}),
+          ...(typeof options?.sinceMs === 'number'
+            ? { sinceMs: options.sinceMs }
+            : {}),
+        });
       } catch {
+        if (paths.length === 0) return undefined;
         return {
           files: paths.map((path) => ({
             path,
@@ -267,6 +334,7 @@ export function useRunStream(deps: Pick<
             additions: 0,
             deletions: 0,
           })),
+          totalCount: paths.length,
           totalAdditions: 0,
           totalDeletions: 0,
         };
@@ -275,8 +343,21 @@ export function useRunStream(deps: Pick<
     [engine],
   );
 
+  const snapshotDirtyPaths = useCallback(async (): Promise<string[]> => {
+    if (!engine) return [];
+    try {
+      const status = await fetchGitStatus(engine);
+      return (status.files ?? [])
+        .map((file) => file.path.replace(/\\/g, '/').trim())
+        .filter((path) => path.length > 0);
+    } catch {
+      return [];
+    }
+  }, [engine]);
+
   return {
     consumeStream,
     resolveFileChanges,
+    snapshotDirtyPaths,
   };
 }

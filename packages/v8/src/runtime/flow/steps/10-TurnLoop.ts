@@ -65,6 +65,8 @@ export interface TurnLoopSketch {
     summary?: string;
     reasonCode?: string;
     outputPreview?: string;
+    /** Process tool exitCode — authoritative for verify evidence. */
+    exitCode?: number;
   }>;
 }
 
@@ -294,6 +296,17 @@ export function defaultGrantFromDecision(
       allowedEffects: [...compiled.allowedEffects],
       approvalMode: compiled.approvalMode,
       pathScopes: [...(compiled.pathScopes ?? [])],
+      ...(compiled.commandRules?.length
+        ? {
+            commandRules: compiled.commandRules.map((rule) => ({
+              prefixes: [...rule.prefixes],
+              allowShellMetacharacters: rule.allowShellMetacharacters === true,
+              ...(typeof rule.maxOutputBytes === "number"
+                ? { maxOutputBytes: rule.maxOutputBytes }
+                : {}),
+            })),
+          }
+        : {}),
       ...(compiled.scopes?.readPaths
         ? { readPaths: [...compiled.scopes.readPaths] }
         : {}),
@@ -314,9 +327,14 @@ export function defaultGrantFromDecision(
         "directory_tree",
         "apply_patch",
         "run_readonly_command",
+        "run_command",
       ],
       maximumWorkspaceEffect: "write",
-      allowedEffects: ["workspace_write", "workspace_read"],
+      allowedEffects: [
+        "workspace_write",
+        "workspace_read",
+        "process_execute",
+      ],
       approvalMode: "when_required",
     };
   }
@@ -335,7 +353,7 @@ export function defaultGrantFromDecision(
         "run_readonly_command",
       ],
       maximumWorkspaceEffect: "read",
-      allowedEffects: ["workspace_read"],
+      allowedEffects: ["workspace_read", "process_execute"],
       approvalMode: "never",
     };
   }

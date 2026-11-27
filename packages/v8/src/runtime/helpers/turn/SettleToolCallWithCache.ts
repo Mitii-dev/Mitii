@@ -14,6 +14,50 @@ import { extractChangedPathsFromToolArgs } from "../task/ExtractChangedPathsFrom
 import type { ToolCallCache } from "../store/ToolCallCache";
 import type { ToolEffectClass } from "../../tools/ClassifyToolEffect";
 
+function extractChangedPathsFromToolOutput(output: unknown): string[] {
+  if (!output || typeof output !== "object") return [];
+  const record = output as Record<string, unknown>;
+  const out: string[] = [];
+  const push = (value: unknown) => {
+    if (typeof value === "string" && value.trim()) out.push(value.trim());
+    else if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === "string" && item.trim()) out.push(item.trim());
+        else if (item && typeof item === "object" && "path" in item) {
+          const path = (item as { path?: unknown }).path;
+          if (typeof path === "string" && path.trim()) out.push(path.trim());
+        }
+      }
+    }
+  };
+  push(record.changedFiles);
+  push(record.paths);
+  push(record.files);
+  if (Array.isArray(record.applied)) {
+    for (const item of record.applied) {
+      if (item && typeof item === "object" && "path" in item) {
+        push((item as { path?: unknown }).path);
+      }
+    }
+  }
+  return [...new Set(out)].slice(0, 64);
+}
+
+/** Prefer output paths when args omit them (common for patch tools). */
+function mergeArgsWithOutputPaths(args: unknown, output: unknown): unknown {
+  const fromOutput = extractChangedPathsFromToolOutput(output);
+  if (fromOutput.length === 0) return args;
+  const base =
+    args && typeof args === "object" && !Array.isArray(args)
+      ? { ...(args as Record<string, unknown>) }
+      : {};
+  const existing = extractChangedPathsFromToolArgs(base);
+  return {
+    ...base,
+    changedPaths: [...new Set([...existing, ...fromOutput])],
+  };
+}
+
 export async function settleToolCallWithCache(input: {
   journal: ToolInvocationRecord[];
   toolCache: ToolCallCache;
@@ -114,12 +158,23 @@ export async function settleToolCallWithCache(input: {
         ? `tool_call_cache_invalidated_${wiped}`
         : "tool_call_cache_invalidate_empty",
     );
+    const fromOutput = extractChangedPathsFromToolOutput(output);
+    const allPaths = [...new Set([...paths, ...fromOutput])].slice(0, 64);
+    if (allPaths.length > 0) {
+      const prior =
+        input.store.getSlice<string[]>("changedFiles") ??
+        input.store.getSlice<string[]>("mutatedPaths") ??
+        [];
+      input.store.setSlice("changedFiles", [
+        ...new Set([...prior, ...allPaths]),
+      ]);
+    }
   }
 
   reasonCodes.push(
     ...applyTaskSettleToStore({
       store: input.store,
-      args: input.args,
+      args: mergeArgsWithOutputPaths(input.args, output),
       effect: input.effect,
       status,
     }),

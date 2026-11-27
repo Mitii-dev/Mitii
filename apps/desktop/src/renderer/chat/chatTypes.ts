@@ -28,4 +28,8 @@ export interface HistoryThread {
   pendingPlan?: PlanArtifact;
   pendingPlanStrategy?: PlanStrategyDecision;
   pendingTaskList?: TaskList;
+  /** Durable notebook of finished plan step ids across desk refills. */
+  completedPlanStepIds?: string[];
+  /** Last structured next-action prompt from a partial slice. */
+  pendingNextActionPrompt?: string;
 }

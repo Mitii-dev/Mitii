@@ -34,6 +34,24 @@ describe("adaptHostStartToRuntime", () => {
     expect(adapted.git?.branch).toBe("main");
   });
 
+  it("keeps host taskList for next-slice continuity", () => {
+    const adapted = adaptHostStartToRuntime({
+      request: { userMessage: "start next", mode: "agent" },
+      taskList: {
+        schemaVersion: 1,
+        source: "agent",
+        purpose: "execution",
+        items: [
+          { id: "s1", title: "First slice", status: "done" },
+          { id: "s2", title: "Next slice", status: "pending" },
+        ],
+      },
+      completedPlanStepIds: ["s1"],
+    });
+    expect(adapted.taskList?.items).toHaveLength(2);
+    expect(adapted.completedPlanStepIds).toEqual(["s1"]);
+  });
+
   it("merges runtimeSituation snapshot from desktop/SDK", () => {
     const adapted = adaptHostStartToRuntime({
       request: { userMessage: "continue", mode: "agent" },

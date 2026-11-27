@@ -20,6 +20,7 @@ export function buildRuntimeUsageSketch(turnLoop: TurnLoopSketch | undefined): {
     summary?: string;
     reasonCode?: string;
     outputPreview?: string;
+    exitCode?: number;
   }>;
 } {
   const journal: ToolInvocationRecord[] = turnLoop?.journal ?? [];
@@ -35,6 +36,7 @@ export function buildRuntimeUsageSketch(turnLoop: TurnLoopSketch | undefined): {
       ...(meta?.summary ? { summary: meta.summary } : {}),
       ...(meta?.reasonCode ? { reasonCode: meta.reasonCode } : {}),
       ...(meta?.outputPreview ? { outputPreview: meta.outputPreview } : {}),
+      ...(typeof meta?.exitCode === "number" ? { exitCode: meta.exitCode } : {}),
     };
   });
 

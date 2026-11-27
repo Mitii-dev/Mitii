@@ -4,16 +4,16 @@ import { composeRuntime } from "../../adapters/compose/ComposeRuntime";
 import { adaptAgentStartMessage } from "../../helpers/adapt/AdaptAgentStartMessage";
 
 describe("RuntimePipeline.start / resume", () => {
-  it("suspends clarify via start facade", async () => {
+  it("agent thin asks do not hollow-clarify via start facade", async () => {
     const runtime = composeRuntime();
     const result = await runtime.start({
       start: { message: "fix it" },
       mode: "agent",
       runId: "rs-1",
     });
-    expect(result.status).toBe("suspended");
-    expect(result.route).toBe("clarify");
-    expect(result.reasonCodes).toContain("runtime_start_suspended");
+    expect(result.gateKind).not.toBe("clarification_required");
+    expect(result.status).not.toBe("suspended");
+    expect(result.reasonCodes).toContain("runtime_start_completed");
   });
 
   it("completes ask research shell without verify", async () => {

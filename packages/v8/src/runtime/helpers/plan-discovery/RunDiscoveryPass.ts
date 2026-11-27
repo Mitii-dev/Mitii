@@ -40,6 +40,21 @@ export interface RunDiscoveryPassResult {
   reasonCodes: string[];
 }
 
+/** DiscoveryBrief / DiscoveryObservation objective contract max. */
+export const DISCOVERY_OBJECTIVE_MAX_CHARS = 1_000;
+
+/** Clamp long user prompts so discovery observation parse never throws too_big. */
+export function clipDiscoveryObjective(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  if (trimmed.length === 0) {
+    return "Discover repository evidence for planning";
+  }
+  if (trimmed.length <= DISCOVERY_OBJECTIVE_MAX_CHARS) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, DISCOVERY_OBJECTIVE_MAX_CHARS - 1)}…`;
+}
+
 function seedFromPack(
   objective: string,
   pack?: SituationPack,
@@ -65,7 +80,7 @@ function seedFromPack(
 
   return {
     schemaVersion: PLANNING_SCHEMA_VERSION,
-    objective,
+    objective: clipDiscoveryObjective(objective),
     filesRead,
     searchHits: [],
     explicitTargets,
@@ -86,9 +101,12 @@ export async function runDiscoveryPass(
       ? input.pack.scope.focusPaths
       : ["."],
   });
-  const observation: DiscoveryObservation =
-    input.seedObservations ??
-    seedFromPack(input.objective, input.pack);
+  const observation: DiscoveryObservation = input.seedObservations
+    ? {
+        ...input.seedObservations,
+        objective: clipDiscoveryObjective(input.seedObservations.objective),
+      }
+    : seedFromPack(input.objective, input.pack);
 
   let toolCalls = 0;
   let fileReads = observation.filesRead?.length ?? 0;

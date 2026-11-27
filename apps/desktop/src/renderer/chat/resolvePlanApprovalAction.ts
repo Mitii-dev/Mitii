@@ -1,12 +1,12 @@
 /**
- * Plan-approval card primary action depends on the composer mode.
- * Agent → resume execute. Plan/ask → keep the plan without writing files.
+ * Plan-card primary action: Build always resumes execute (Cursor-like).
+ * Composer mode is switched to agent by the host before resume.
  */
 
 export type PlanApprovalAction = 'resume_execute' | 'keep_plan_only';
 
 export function resolvePlanApprovalAction(
-  mode: string | undefined,
+  _mode: string | undefined,
 ): PlanApprovalAction {
-  return mode === 'agent' ? 'resume_execute' : 'keep_plan_only';
+  return 'resume_execute';
 }

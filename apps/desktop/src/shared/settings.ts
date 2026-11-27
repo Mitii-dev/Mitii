@@ -424,12 +424,11 @@ export function settingsToEngineEnv(
     env.MITII_APPLY_PATCH_FUZZY = '1';
   }
 
+  // Host process sandbox (seatbelt/bwrap/docker). Default ON when unset so
+  // selective node/pnpm verify runs fail-closed outside the workspace.
+  // Explicit `enabled: false` still disables.
   const sandboxExplicit = settings.safety.sandbox.enabled;
-  const sandboxOn =
-    sandboxExplicit === true ||
-    (sandboxExplicit === null &&
-      (settings.safety.approvalMode === 'safe' ||
-        settings.safety.approvalMode === 'guided'));
+  const sandboxOn = sandboxExplicit !== false;
   if (sandboxOn) {
     env.MITII_SANDBOX = '1';
     env.MITII_SANDBOX_NETWORK = String(

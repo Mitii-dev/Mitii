@@ -4,9 +4,11 @@ import {
   type GrantProfile,
   type ToolGrant,
 } from "../../../modules/decision-policy";
+import type { TaskList } from "../../../modules/task-list";
 import { selectRouteBody } from "../../helpers/routes";
 import type { RouteBodyPlan } from "../../helpers/routes";
 import { scopesFromVerdict } from "../../helpers/grant/ScopesFromVerdict";
+import { hasOpenExecutionChecklist } from "../../helpers/task";
 import { captureVerificationBaseline } from "../../helpers/verify/CaptureVerificationBaseline";
 import type { TaskDirectionAssessment } from "../../contracts/assess/TaskDirectionAssessment";
 import type { SituationPack } from "../../contracts/orient/SituationPack";
@@ -70,6 +72,10 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
           : "high"
       : assessment.clarityConfidence;
 
+  const openExecutionChecklist = hasOpenExecutionChecklist(
+    ctx.store.getSlice<TaskList>("taskList"),
+  );
+
   const plate = selectDecisionPlate({
     mode,
     primaryTaskIntent: assessment.primaryTaskIntent,
@@ -87,6 +93,7 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     priorRoute: pack?.history?.priorRoute ?? ctx.input.history?.priorRoute,
     endingPosture:
       pack?.history?.endingPosture ?? ctx.input.history?.endingPosture,
+    openExecutionChecklist,
   });
 
   // S2C: plate `answer` is the live wire route (legacy aliases shimmed elsewhere).

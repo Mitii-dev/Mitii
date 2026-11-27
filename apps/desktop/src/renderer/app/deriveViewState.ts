@@ -9,7 +9,7 @@ import { planArtifactToFollowView } from '../chat/planFollowView.js';
 export function deriveViewState(deps: Pick<
     ReturnType<typeof useChatThreadState>,
     'history' | 'pendingPlan' | 'busy' | 'pendingTaskList' | 'completedPlanStepIds'
-    | 'messages' | 'reviewDismissed' | 'reviewFindings'
+    | 'messages' | 'reviewDismissed' | 'reviewFindings' | 'pendingNextActionPrompt'
   > &
   Pick<
     ReturnType<typeof useShellUiState>,
@@ -32,6 +32,7 @@ export function deriveViewState(deps: Pick<
     messages,
     reviewDismissed,
     reviewFindings,
+    pendingNextActionPrompt,
     view,
     chatLayout,
     workspaceSide,
@@ -67,21 +68,31 @@ export function deriveViewState(deps: Pick<
     completedPlanStepIds,
   );
 
-  const latestAssistantWithChanges = [...messages]
+  // Cursor-like: file changes track the latest assistant turn only.
+  // Scanning older cards left the strip stuck on the first patch round.
+  const latestAssistant = [...messages]
     .reverse()
-    .find(
-      (m) =>
-        m.role === 'assistant' &&
-        m.fileChanges &&
-        m.fileChanges.files.length > 0,
-    );
+    .find((m) => m.role === 'assistant');
 
-  const latestFileChanges = reviewDismissed
-    ? undefined
-    : latestAssistantWithChanges?.fileChanges;
+  const latestFileChanges =
+    !latestAssistant ||
+    reviewDismissed ||
+    !(
+      (latestAssistant.fileChanges?.totalCount ??
+        latestAssistant.fileChanges?.files?.length ??
+        0) > 0
+    )
+      ? undefined
+      : latestAssistant.fileChanges;
 
   const latestReviewRunId =
-    latestFileChanges?.runId ?? latestAssistantWithChanges?.id;
+    latestFileChanges?.runId ?? latestAssistant?.id;
+
+  const latestAssistantWithChanges =
+    latestFileChanges && latestAssistant ? latestAssistant : undefined;
+
+  const latestFileChangeCount =
+    latestFileChanges?.totalCount ?? latestFileChanges?.files.length ?? 0;
 
   const codeReviewEnabled = Boolean(
     settings.ui?.features?.codeReviewButton,
@@ -93,18 +104,29 @@ export function deriveViewState(deps: Pick<
   // Chat layout: files live on the message card. Code layout: files live on
   // the composer strip. Never both.
   const showComposerReview =
-    (chatLayout === 'code' && (latestFileChanges?.files.length ?? 0) > 0) ||
+    (chatLayout === 'code' && latestFileChangeCount > 0) ||
     activeReviewFindings.length > 0;
 
   const showOnboarding = settings.onboarding?.completed === false;
+
+  const hasOpenExecutionItem = Boolean(
+    pendingTaskList?.items.some(
+      (item) => item.status === 'pending' || item.status === 'active',
+    ),
+  );
+  const showContinueSliceBar =
+    !busy &&
+    (Boolean(pendingNextActionPrompt?.trim()) || hasOpenExecutionItem);
 
   return {
     planFollowView,
     showComposerReview,
     activeReviewFindings,
     latestFileChanges,
+    latestFileChangeCount,
     latestReviewRunId,
     latestAssistantWithChanges,
+    showContinueSliceBar,
     inCodeMode,
     recentHistory,
     hasMoreHistory,

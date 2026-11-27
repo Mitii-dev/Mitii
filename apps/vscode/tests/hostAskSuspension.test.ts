@@ -94,4 +94,34 @@ describe('resultToSuspension', () => {
       continuePrompt: 'Keep going?',
     });
   });
+
+  it('preserves clarifyOrigin for hollow_plan clarifications', () => {
+    const payload = resultToSuspension({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_4',
+      requestId: 'req_4',
+      status: 'suspended',
+      reasonCodes: ['clarification_suspended'],
+      warnings: ['gate_clarify_hollow_plan'],
+      usage: {
+        modelCalls: 1,
+        toolCalls: 0,
+        loopIterations: 1,
+      },
+      durationMs: 10,
+      suspension: {
+        kind: 'clarification_required',
+        rationale: 'Hollow plan.',
+        clarificationPrompt: 'Plan needed before building.',
+        clarifyOrigin: 'hollow_plan',
+      },
+    });
+
+    expect(payload).toMatchObject({
+      runId: 'run_4',
+      kind: 'clarification_required',
+      clarifyOrigin: 'hollow_plan',
+      clarificationPrompt: 'Plan needed before building.',
+    });
+  });
 });

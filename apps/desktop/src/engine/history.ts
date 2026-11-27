@@ -41,6 +41,8 @@ export interface DesktopChatThread {
   pendingPlan?: unknown;
   pendingPlanStrategy?: unknown;
   pendingTaskList?: unknown;
+  completedPlanStepIds?: unknown;
+  pendingNextActionPrompt?: unknown;
 }
 
 export interface DesktopHistoryStore {
@@ -147,6 +149,12 @@ function normalizeThread(raw: unknown): DesktopChatThread | undefined {
     ...(obj.pendingTaskList != null
       ? { pendingTaskList: obj.pendingTaskList }
       : {}),
+    ...(Array.isArray(obj.completedPlanStepIds)
+      ? { completedPlanStepIds: obj.completedPlanStepIds }
+      : {}),
+    ...(typeof obj.pendingNextActionPrompt === 'string'
+      ? { pendingNextActionPrompt: obj.pendingNextActionPrompt }
+      : {}),
   };
 }
 
@@ -210,6 +218,8 @@ export interface UpsertThreadOptions {
   pendingPlan?: unknown | null;
   pendingPlanStrategy?: unknown | null;
   pendingTaskList?: unknown | null;
+  completedPlanStepIds?: unknown | null;
+  pendingNextActionPrompt?: unknown | null;
   clearPendingPlan?: boolean;
 }
 
@@ -236,6 +246,8 @@ export function upsertThreadMessages(
         pendingPlan: _p,
         pendingPlanStrategy: _s,
         pendingTaskList: _t,
+        completedPlanStepIds: _c,
+        pendingNextActionPrompt: _n,
         ...rest
       } = thread;
       return rest;
@@ -252,6 +264,20 @@ export function upsertThreadMessages(
     if (options.pendingTaskList !== undefined) {
       if (options.pendingTaskList === null) delete next.pendingTaskList;
       else next.pendingTaskList = options.pendingTaskList;
+    }
+    if (options.completedPlanStepIds !== undefined) {
+      if (options.completedPlanStepIds === null) {
+        delete next.completedPlanStepIds;
+      } else {
+        next.completedPlanStepIds = options.completedPlanStepIds;
+      }
+    }
+    if (options.pendingNextActionPrompt !== undefined) {
+      if (options.pendingNextActionPrompt === null) {
+        delete next.pendingNextActionPrompt;
+      } else {
+        next.pendingNextActionPrompt = options.pendingNextActionPrompt;
+      }
     }
     return next;
   };

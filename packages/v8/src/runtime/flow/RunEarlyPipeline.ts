@@ -2,6 +2,7 @@ import { StoreManager } from "../helpers/store";
 import type { StoreSnapshot } from "../helpers/store/StoreSnapshot";
 import type { RuntimeStartInput } from "../contracts/input/RuntimeStartInput";
 import type { RuntimeDependencies } from "../ports/RuntimeDependencies";
+import { hydrateStartTaskList } from "../helpers/task";
 import { applyWindowPolicy } from "./steps/1-ApplyWindowPolicy";
 import { orientSituation } from "./steps/2-OrientSituation";
 import { attachPreDecideMaterialsStep } from "./steps/2b-AttachPreDecideMaterials";
@@ -42,6 +43,8 @@ export async function runEarlyPipeline(input: {
   };
 
   applyWindowPolicy(ctx);
+  // Host-carried checklist must land before decide so open items bias Continuity.
+  hydrateStartTaskList({ store, start: input.start });
   orientSituation(ctx);
   await attachPreDecideMaterialsStep(ctx);
   await assessDirection(ctx);

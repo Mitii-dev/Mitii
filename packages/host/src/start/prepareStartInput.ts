@@ -67,6 +67,7 @@ export async function prepareStartInput(
     approvedPlan,
     approvedPlanStrategy,
     taskList,
+    completedPlanStepIds,
     environment,
     budget,
     loopPolicy,
@@ -280,6 +281,9 @@ export async function prepareStartInput(
     ...(approvedPlan ? { approvedPlan } : {}),
     ...(approvedPlanStrategy ? { approvedPlanStrategy } : {}),
     ...(taskList ? { taskList } : {}),
+    ...(completedPlanStepIds && completedPlanStepIds.length > 0
+      ? { completedPlanStepIds }
+      : {}),
     ...(environment && environment.length > 0 ? { environment } : {}),
     ...(budget ? { budget } : {}),
     ...(loopPolicy ? { loopPolicy } : {}),

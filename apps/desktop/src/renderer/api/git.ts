@@ -149,11 +149,21 @@ export async function fetchFileChanges(options: {
   baseUrl: string;
   token?: string;
   paths: string[];
+  beforePaths?: string[];
+  sinceMs?: number;
 }): Promise<import('../../shared/fileChanges.js').DesktopFileChanges> {
   const res = await fetch(`${options.baseUrl}/v1/git/file-changes`, {
     method: 'POST',
     headers: authHeaders(options.token),
-    body: JSON.stringify({ paths: options.paths }),
+    body: JSON.stringify({
+      paths: options.paths,
+      ...(options.beforePaths?.length
+        ? { beforePaths: options.beforePaths }
+        : {}),
+      ...(typeof options.sinceMs === 'number'
+        ? { sinceMs: options.sinceMs }
+        : {}),
+    }),
   });
   if (!res.ok) throw new Error(`file_changes_${res.status}`);
   return (await res.json()) as Awaited<ReturnType<typeof fetchFileChanges>>;

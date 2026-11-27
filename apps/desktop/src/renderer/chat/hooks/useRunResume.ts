@@ -18,6 +18,7 @@ import type { useEngineLifecycle } from '../../shell/hooks/useEngineLifecycle.js
 import type { useRunStream } from './useRunStream.js';
 import type { useShellUiState } from '../../shell/hooks/useShellUiState.js';
 import type { useChatPersistence } from './useChatPersistence.js';
+import { stripContinueCtaFromAnswer } from '../../../shared/fileChanges.js';
 
 export function useRunResume(deps: Pick<
     ReturnType<typeof useEngineSnapshot>,
@@ -27,7 +28,7 @@ export function useRunResume(deps: Pick<
     ReturnType<typeof useChatThreadState>,
     'busy' | 'setBusy' | 'runActiveRef' | 'setSuspension' | 'messages' | 'setMessages'
     | 'threadId' | 'setPendingPlan' | 'setPendingPlanStrategy' | 'setPendingTaskList'
-    | 'setTokenUsage'
+    | 'setCompletedPlanStepIds' | 'setPendingNextActionPrompt' | 'setTokenUsage'
   > &
   Pick<
     ReturnType<typeof useRunAbort>,
@@ -47,7 +48,7 @@ export function useRunResume(deps: Pick<
   > &
   Pick<
     ReturnType<typeof useRunStream>,
-    'consumeStream' | 'resolveFileChanges'
+    'consumeStream' | 'resolveFileChanges' | 'snapshotDirtyPaths'
   > &
   Pick<
     ReturnType<typeof useShellUiState>,
@@ -70,6 +71,8 @@ export function useRunResume(deps: Pick<
     setPendingPlan,
     setPendingPlanStrategy,
     setPendingTaskList,
+    setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     setTokenUsage,
     beginRunAbort,
     shouldIgnoreRunError,
@@ -82,6 +85,7 @@ export function useRunResume(deps: Pick<
     ensureEngineReadyForPrompt,
     consumeStream,
     resolveFileChanges,
+    snapshotDirtyPaths,
     workspaceInvalidateSeq,
     setWorkspaceInvalidate,
     persistMessages,
@@ -95,6 +99,8 @@ export function useRunResume(deps: Pick<
       const signal = beginRunAbort();
       setError(null);
       setSuspension(null);
+      const runStartedAtMs = Date.now();
+      const beforeDirtyPaths = await snapshotDirtyPaths();
 
       const existing = [...messages]
         .reverse()
@@ -163,25 +169,69 @@ export function useRunResume(deps: Pick<
           activity,
           suspension: nextSuspension,
           mutatedPaths,
+          processMutation,
           tokenUsage: nextUsage,
           plan: resultPlan,
           planStrategy: resultPlanStrategy,
           taskList: resultTaskList,
+          completedPlanStepIds: resultCompletedIds,
+          nextActionPrompt: resultNextActionPrompt,
+          pendingCount: resultPendingCount,
         } = streamResult;
 
         const mergedActivity = [...priorActivity, ...activity];
-        const fileChanges = await resolveFileChanges(mutatedPaths);
-        if (mutatedPaths.length > 0) {
+        const resolvedChanges = await resolveFileChanges(mutatedPaths, {
+          beforePaths: beforeDirtyPaths,
+          sinceMs: runStartedAtMs,
+          includeDirtyDelta:
+            processMutation ||
+            mutatedPaths.length > 0 ||
+            beforeDirtyPaths.length > 0,
+        });
+        const fileChanges = resolvedChanges
+          ? { ...resolvedChanges, runId: assistantId }
+          : mutatedPaths.length > 0
+            ? {
+                runId: assistantId,
+                files: mutatedPaths.map((path) => ({
+                  path,
+                  status: 'M' as const,
+                  additions: 0,
+                  deletions: 0,
+                })),
+                totalCount: mutatedPaths.length,
+                totalAdditions: 0,
+                totalDeletions: 0,
+              }
+            : undefined;
+        if (
+          mutatedPaths.length > 0 ||
+          (fileChanges?.totalCount ?? fileChanges?.files.length ?? 0) > 0
+        ) {
           workspaceInvalidateSeq.current += 1;
           setWorkspaceInvalidate({
             seq: workspaceInvalidateSeq.current,
-            paths: mutatedPaths,
+            paths:
+              mutatedPaths.length > 0
+                ? mutatedPaths
+                : (fileChanges?.files.map((file) => file.path) ?? []),
           });
         }
-        let finalAssistant = assistant.trim()
+        const hasOpenSliceWork =
+          Boolean(resultNextActionPrompt) ||
+          (typeof resultPendingCount === 'number' && resultPendingCount > 0) ||
+          Boolean(
+            resultTaskList?.items.some(
+              (item) => item.status === 'pending' || item.status === 'active',
+            ),
+          );
+        const strippedAssistant = hasOpenSliceWork
+          ? stripContinueCtaFromAnswer(assistant)
+          : assistant;
+        let finalAssistant = strippedAssistant.trim()
           ? priorText
-            ? `${priorText}\n\n${assistant}`
-            : assistant
+            ? `${priorText}\n\n${strippedAssistant}`
+            : strippedAssistant
           : priorText;
         if (!finalAssistant.trim() && !nextSuspension) {
           finalAssistant =
@@ -207,8 +257,18 @@ export function useRunResume(deps: Pick<
               pendingPlan?: PlanArtifact | null;
               pendingPlanStrategy?: PlanStrategyDecision | null;
               pendingTaskList?: TaskList | null;
+              completedPlanStepIds?: string[] | null;
+              pendingNextActionPrompt?: string | null;
             }
           | undefined;
+        if (resultCompletedIds?.length) {
+          setCompletedPlanStepIds(new Set(resultCompletedIds));
+        }
+        if (resultNextActionPrompt) {
+          setPendingNextActionPrompt(resultNextActionPrompt);
+        } else if (!hasOpenSliceWork) {
+          setPendingNextActionPrompt(null);
+        }
         if (resultPlan) {
           setPendingPlan(resultPlan);
           setPendingPlanStrategy(resultPlanStrategy ?? null);
@@ -217,6 +277,25 @@ export function useRunResume(deps: Pick<
             pendingPlan: resultPlan,
             pendingPlanStrategy: resultPlanStrategy ?? null,
             pendingTaskList: resultTaskList ?? null,
+            ...(resultCompletedIds?.length
+              ? { completedPlanStepIds: resultCompletedIds }
+              : {}),
+            ...(resultNextActionPrompt
+              ? { pendingNextActionPrompt: resultNextActionPrompt }
+              : hasOpenSliceWork
+                ? {}
+                : { pendingNextActionPrompt: null }),
+          };
+        } else if (hasOpenSliceWork) {
+          if (resultTaskList) setPendingTaskList(resultTaskList);
+          planPersist = {
+            ...(resultTaskList ? { pendingTaskList: resultTaskList } : {}),
+            ...(resultCompletedIds?.length
+              ? { completedPlanStepIds: resultCompletedIds }
+              : {}),
+            ...(resultNextActionPrompt
+              ? { pendingNextActionPrompt: resultNextActionPrompt }
+              : {}),
           };
         }
 
@@ -275,6 +354,7 @@ export function useRunResume(deps: Pick<
       messages,
       mode,
       resolveFileChanges,
+      snapshotDirtyPaths,
       scrollToBottom,
       snapshot,
       threadId,

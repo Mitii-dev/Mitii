@@ -10,7 +10,11 @@ export type {
   EnforceDiscoveryQualityFloorInput,
   EnforceDiscoveryQualityFloorResult,
 } from "./EnforceDiscoveryQualityFloor";
-export { runDiscoveryPass } from "./RunDiscoveryPass";
+export {
+  runDiscoveryPass,
+  clipDiscoveryObjective,
+  DISCOVERY_OBJECTIVE_MAX_CHARS,
+} from "./RunDiscoveryPass";
 export type {
   RunDiscoveryPassInput,
   RunDiscoveryPassResult,

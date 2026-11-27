@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { endingPostureSchema } from "../../../modules/request-understanding/contracts/continuity/EndingPosture";
+import { taskListSchema } from "../../../modules/task-list";
 
 /** Minimal start shape for the new runtime — expands as contracts migrate. */
 export const runtimeStartInputSchema = z
@@ -182,6 +183,13 @@ export const runtimeStartInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Durable campaign checklist from the host (prior turn). Hydrated into
+     * the store so Continue / next-slice does not re-plan from scratch.
+     */
+    taskList: taskListSchema.optional(),
+    /** Plan step ids already completed across prior turns. */
+    completedPlanStepIds: z.array(z.string().min(1)).max(64).optional(),
   })
   .strict();
 

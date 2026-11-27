@@ -163,6 +163,17 @@ export function TokenMeter({
             <span aria-hidden="true">↓</span>
             <span>{formatCompact(outputTotal)}</span>
           </span>
+          {breakdown && windowTokens > 0 ? (
+            <>
+              <span className="token-chip__sep">·</span>
+              <span
+                className="token-chip__ctx"
+                aria-label={`Context ${formatPct(fillRatio)} of window`}
+              >
+                {formatPct(fillRatio)}
+              </span>
+            </>
+          ) : null}
         </button>
         {open ? (
           <div
@@ -176,6 +187,12 @@ export function TokenMeter({
               </span>
               <strong>{headerTag}</strong>
             </div>
+
+            <ContextBudgetPanel
+              breakdown={breakdown}
+              windowTokens={windowTokens}
+              live={usage.live}
+            />
 
             {displayEstimate || showCacheSection ? (
               <CostAnalytics
@@ -195,12 +212,6 @@ export function TokenMeter({
               breakdown={breakdown}
               windowTokens={windowTokens}
               liveStatsLayout={liveStatsLayout}
-            />
-
-            <ContextBudgetPanel
-              breakdown={breakdown}
-              windowTokens={windowTokens}
-              live={usage.live}
             />
           </div>
         ) : null}

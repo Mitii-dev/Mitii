@@ -31,6 +31,65 @@ describe("runtime shell bridge", () => {
     expect(result.reasonCodes).toContain("clarification_suspended");
   });
 
+  it("forwards hollow_plan clarifyOrigin onto suspension", async () => {
+    const handle = createAgentRunHandleFromRuntimeResult({
+      schemaVersion: 1,
+      runId: "bridge-hollow",
+      status: "suspended",
+      route: "plan",
+      gateKind: "clarification_required",
+      clarificationPrompt: "Plan needed before building.",
+      clarifyOrigin: "hollow_plan",
+      reasonCodes: ["gate_clarify_hollow_plan", "runtime_start_plan_gate"],
+    });
+    const result = await handle.result;
+    expect(result.suspension).toMatchObject({
+      kind: "clarification_required",
+      clarifyOrigin: "hollow_plan",
+      clarificationPrompt: "Plan needed before building.",
+    });
+  });
+
+  it("forwards taskList progress and nextAction on completed execute", async () => {
+    const handle = createAgentRunHandleFromRuntimeResult({
+      schemaVersion: 1,
+      runId: "bridge-progress",
+      status: "completed",
+      route: "execute",
+      answer: "HTTP slice landed.",
+      taskList: {
+        schemaVersion: 1,
+        source: "plan",
+        items: [
+          { id: "t1", title: "HTTP", status: "done" },
+          { id: "t2", title: "React cases", status: "pending" },
+        ],
+      },
+      progress: {
+        planCompletedCount: 1,
+        planTotalCount: 2,
+        doneCount: 1,
+        pendingCount: 1,
+        nextTitle: "React cases",
+        openTitles: ["React cases"],
+      },
+      completedPlanStepIds: ["t1"],
+      nextAction: {
+        kind: "continue_checklist",
+        prompt: "Continue with the next plan item: React cases",
+      },
+      reasonCodes: ["runtime_start_completed", "runtime_slice_next_action"],
+    });
+    const result = await handle.result;
+    expect(result.taskList?.items).toHaveLength(2);
+    expect(result.progress?.nextTitle).toBe("React cases");
+    expect(result.completedPlanStepIds).toEqual(["t1"]);
+    expect(result.nextAction).toMatchObject({
+      kind: "continue_checklist",
+      prompt: expect.stringContaining("React cases"),
+    });
+  });
+
   it("attaches pendingApproval onto suspension for mutation gates", async () => {
     const handle = createAgentRunHandleFromRuntimeResult({
       schemaVersion: 1,
@@ -76,6 +135,23 @@ describe("runtime shell bridge", () => {
       decision: "approve",
       target: "mutation",
     });
+  });
+
+  it("adaptEngineResumeToRuntime keeps fallback message on clarify", () => {
+    const adapted = adaptEngineResumeToRuntime({
+      input: {
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: "r-clarify",
+        clarificationAnswer: "go ahead",
+      },
+      fallbackMessage:
+        "redesign HTTP checks and add React cases that prove it",
+      mode: "agent",
+    });
+    expect(adapted.decision).toBe("clarify_answer");
+    expect(adapted.clarifyAnswer).toBe("go ahead");
+    expect(adapted.message).toContain("redesign HTTP checks");
+    expect(adapted.message).not.toBe("go ahead");
   });
 
   it("preferRuntimeShell routes engine.start through runtime", async () => {

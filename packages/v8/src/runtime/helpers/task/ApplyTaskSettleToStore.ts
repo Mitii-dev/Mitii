@@ -32,6 +32,23 @@ export function applyTaskSettleToStore(input: {
   input.store.setSlice("taskList", result.taskList);
   if (result.advanced) {
     input.store.setSlice("taskHandoffs", result.handoffs);
+    const completed =
+      input.store.getSlice<string[]>("completedPlanStepIds") ?? [];
+    const newlyDone = result.taskList.items
+      .filter((item) => item.status === "done")
+      .map((item) => item.sourceRef?.trim() || item.id)
+      .filter(Boolean);
+    input.store.setSlice("completedPlanStepIds", [
+      ...new Set([...completed, ...newlyDone]),
+    ]);
+    const priorAdvanced =
+      input.store.getSlice<string[]>("campaignAdvancedThisTurn") ?? [];
+    const justDone = result.taskList.items
+      .filter((item) => item.status === "done")
+      .map((item) => item.id);
+    input.store.setSlice("campaignAdvancedThisTurn", [
+      ...new Set([...priorAdvanced, ...justDone]),
+    ]);
   }
   return result.reasonCodes;
 }

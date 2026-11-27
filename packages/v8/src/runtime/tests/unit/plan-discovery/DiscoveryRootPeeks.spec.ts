@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { PLANNING_SCHEMA_VERSION } from "../../../../modules/planning";
 import { resolveDiscoveryPassBudget } from "../../../../modules/window-budget";
 import {
+  clipDiscoveryObjective,
+  DISCOVERY_OBJECTIVE_MAX_CHARS,
   pickRootPeekPaths,
   peekDiscoveryFromWorkspaceRoot,
   runDiscoveryPass,
@@ -74,6 +76,35 @@ describe("DiscoveryRootPeeks", () => {
     expect(result.observation.filesRead?.some((f) => f.path === "requirement.txt")).toBe(
       true,
     );
+  });
+
+  it("clipDiscoveryObjective clamps past contract max", () => {
+    const long = "x".repeat(DISCOVERY_OBJECTIVE_MAX_CHARS + 200);
+    const clipped = clipDiscoveryObjective(long);
+    expect(clipped.length).toBeLessThanOrEqual(DISCOVERY_OBJECTIVE_MAX_CHARS);
+    expect(clipped.endsWith("…")).toBe(true);
+  });
+
+  it("runDiscoveryPass accepts oversized prompt objectives without throwing", async () => {
+    const budget = resolveDiscoveryPassBudget("medium", 80_000);
+    const longPrompt = `${"Plan HTTP redesign and React cases. ".repeat(80)} end.`;
+    expect(longPrompt.length).toBeGreaterThan(DISCOVERY_OBJECTIVE_MAX_CHARS);
+    const result = await runDiscoveryPass({
+      objective: longPrompt,
+      pack: {
+        schemaVersion: 1,
+        requestText: longPrompt,
+        request: { text: longPrompt },
+        scope: { focusPaths: [], fencePaths: [], evidence: "host" },
+        navigation: { surroundings: [] },
+        pins: {},
+      } as never,
+      budget,
+    });
+    expect(result.brief.objective.length).toBeLessThanOrEqual(
+      DISCOVERY_OBJECTIVE_MAX_CHARS,
+    );
+    expect(result.reasonCodes).toContain("discovery_pass_compiled");
   });
 
   it("runDiscoveryPass peeks root when focus paths are empty", async () => {

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { taskListSchema } from "../../../modules/task-list";
 import { runtimeRunStatusSchema } from "./RuntimeRunStatus";
 
 export const runtimeToolInvocationSketchSchema = z
@@ -11,6 +12,8 @@ export const runtimeToolInvocationSketchSchema = z
     summary: z.string().min(1).max(500).optional(),
     reasonCode: z.string().min(1).max(80).optional(),
     outputPreview: z.string().max(1_000).optional(),
+    /** Process tool exitCode — authoritative for verify evidence. */
+    exitCode: z.number().int().optional(),
   })
   .strict();
 
@@ -44,6 +47,8 @@ export const runtimeVerifySketchSchema = z
         "blocked",
       ])
       .optional(),
+    reasonCodes: z.array(z.string().min(1)).max(24).optional(),
+    checksRun: z.array(z.string().min(1)).max(32).optional(),
   })
   .strict();
 
@@ -91,6 +96,27 @@ export const runtimePendingApprovalSchema = z
   })
   .strict();
 
+/** Plan/checklist progress for host PlanFollow navigation. */
+export const runtimeProgressSketchSchema = z
+  .object({
+    planCompletedCount: z.number().int().nonnegative(),
+    planTotalCount: z.number().int().nonnegative(),
+    doneCount: z.number().int().nonnegative(),
+    pendingCount: z.number().int().nonnegative(),
+    nextTitle: z.string().min(1).max(200).optional(),
+    nextDetail: z.string().min(1).max(500).optional(),
+    openTitles: z.array(z.string().min(1).max(200)).max(6).default([]),
+  })
+  .strict();
+
+/** Structured “what’s next” after a partial slice (no continue_required). */
+export const runtimeNextActionSchema = z
+  .object({
+    kind: z.enum(["continue_checklist", "next_campaign_scope"]),
+    prompt: z.string().min(1).max(500),
+  })
+  .strict();
+
 export const runtimeRunResultSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -128,8 +154,18 @@ export const runtimeRunResultSchema = z
      * Kept loose so runtime does not re-own planning schemas.
      */
     plan: z.record(z.unknown()).optional(),
+    /** Live checklist when derived/settled during the run. */
+    taskList: taskListSchema.optional(),
+    /** Plan/checklist progress for host navigation. */
+    progress: runtimeProgressSketchSchema.optional(),
+    /** Durable notebook of finished plan step ids. */
+    completedPlanStepIds: z.array(z.string().min(1)).max(200).optional(),
+    /** Host CTA after a partial slice. */
+    nextAction: runtimeNextActionSchema.optional(),
     /** User-facing clarification question when gateKind is clarification_required. */
     clarificationPrompt: z.string().min(1).max(2_000).optional(),
+    /** Why clarification_required fired (hollow_plan, scope_fork, …). */
+    clarifyOrigin: z.string().min(1).max(64).optional(),
     /** True when applyGate / mutation path persisted a RuntimeGateCheckpoint. */
     checkpointSaved: z.boolean().optional(),
     /** True when resume hydrated Store slices from a prior snapshot. */
@@ -142,4 +178,6 @@ export type RuntimeVerifySketch = z.infer<typeof runtimeVerifySketchSchema>;
 export type RuntimeMemoryCommitSketch = z.infer<
   typeof runtimeMemoryCommitSketchSchema
 >;
+export type RuntimeProgressSketch = z.infer<typeof runtimeProgressSketchSchema>;
+export type RuntimeNextAction = z.infer<typeof runtimeNextActionSchema>;
 export type RuntimeRunResult = z.infer<typeof runtimeRunResultSchema>;

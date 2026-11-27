@@ -7,6 +7,7 @@ import { ActivityTimeline } from './ActivityTimeline.js';
 import { mcpAppsFromActivity, McpAppCard } from '../mcp/McpAppCard.js';
 import { MarkdownBody } from './MarkdownBody.js';
 import { FileChangesCard } from './FileChangesCard.js';
+import { ContinueSliceBar } from './ContinueSliceBar.js';
 import type { AppModel } from '../app/useAppModel.js';
 
 export function ChatFeed({ m }: { m: AppModel }) {
@@ -19,7 +20,21 @@ export function ChatFeed({ m }: { m: AppModel }) {
     chatLayout,
     setPinnedPaths,
     feedEndRef,
+    showContinueSliceBar,
+    continueNextSlice,
+    busy,
+    pendingTaskList,
+    pendingNextActionPrompt,
   } = m;
+  const continueInFeed = chatLayout === 'chat' && showContinueSliceBar;
+
+  const latestAssistantId = [...messages]
+    .reverse()
+    .find((msg) => msg.role === 'assistant')?.id;
+  const nextTitle =
+    pendingTaskList?.items.find(
+      (item) => item.status === 'pending' || item.status === 'active',
+    )?.title ?? pendingNextActionPrompt ?? undefined;
 
   return (
     <div className="feed" ref={feedRef}>
@@ -29,83 +44,95 @@ export function ChatFeed({ m }: { m: AppModel }) {
           <p>Ask · Plan · Agent — local-first coding agent.</p>
         </div>
       ) : (
-        messages.map((m) => (
-          <div
-            key={m.id}
-            className={`turn turn--${m.role} turn--mode-${m.mode ?? 'ask'}`}
-            style={
-              m.role === 'assistant'
-                ? ({
-                    '--turn-accent': composerModeColor(
-                      (m.mode as DesktopAgentMode) || 'ask',
-                    ),
-                  } as CSSProperties)
-                : undefined
-            }
-          >
-            <div className="turn__role">
-              {m.role === 'user' ? 'You' : 'Mitii'}
+        messages.map((msg) => {
+          const isLatestAssistant =
+            msg.role === 'assistant' && msg.id === latestAssistantId;
+          return (
+            <div
+              key={msg.id}
+              className={`turn turn--${msg.role} turn--mode-${msg.mode ?? 'ask'}`}
+              style={
+                msg.role === 'assistant'
+                  ? ({
+                      '--turn-accent': composerModeColor(
+                        (msg.mode as DesktopAgentMode) || 'ask',
+                      ),
+                    } as CSSProperties)
+                  : undefined
+              }
+            >
+              <div className="turn__role">
+                {msg.role === 'user' ? 'You' : 'Mitii'}
+              </div>
+              {msg.role === 'assistant' ? (
+                <>
+                  <ActivityTimeline
+                    items={(msg.activity ?? []).filter(
+                      (item) => item.kind !== 'mcp_app',
+                    )}
+                    streaming={Boolean(msg.streaming)}
+                    endAt={
+                      msg.streaming
+                        ? undefined
+                        : (msg.activity ?? [])
+                            .filter((item) => item.kind !== 'thinking')
+                            .at(-1)?.at
+                    }
+                  />
+                  {mcpAppsFromActivity(msg.activity).map((app, index) => (
+                    <McpAppCard
+                      key={`${app.title}-${app.paths.svg ?? app.paths.md ?? index}`}
+                      app={app}
+                      onOpenPath={(path) => {
+                        setLayout('code');
+                        setWorkspaceSide('explorer');
+                        setOpenPathRequest({ path, view: 'file' });
+                      }}
+                    />
+                  ))}
+                  {msg.text ? (
+                    <MarkdownBody
+                      text={msg.text}
+                      streaming={Boolean(msg.streaming)}
+                      onOpenFile={(path) => {
+                        setLayout('code');
+                        setWorkspaceSide('explorer');
+                        setOpenPathRequest({ path, view: 'file' });
+                      }}
+                    />
+                  ) : null}
+                  {chatLayout === 'chat' &&
+                  msg.fileChanges &&
+                  (msg.fileChanges.totalCount ??
+                    msg.fileChanges.files.length) > 0 ? (
+                    <FileChangesCard
+                      changes={msg.fileChanges}
+                      onOpenFile={(path) => {
+                        setLayout('code');
+                        setWorkspaceSide('git');
+                        setOpenPathRequest({ path, view: 'diff' });
+                        setPinnedPaths((prev) =>
+                          prev.includes(path)
+                            ? prev
+                            : [...prev, path].slice(0, 32),
+                        );
+                      }}
+                    />
+                  ) : null}
+                  {isLatestAssistant && continueInFeed ? (
+                    <ContinueSliceBar
+                      title={nextTitle}
+                      busy={busy}
+                      onContinue={continueNextSlice}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <div className="turn__user">{msg.text}</div>
+              )}
             </div>
-            {m.role === 'assistant' ? (
-              <>
-                <ActivityTimeline
-                  items={(m.activity ?? []).filter(
-                    (item) => item.kind !== 'mcp_app',
-                  )}
-                  streaming={Boolean(m.streaming)}
-                  endAt={
-                    m.streaming
-                      ? undefined
-                      : (m.activity ?? [])
-                          .filter((item) => item.kind !== 'thinking')
-                          .at(-1)?.at
-                  }
-                />
-                {mcpAppsFromActivity(m.activity).map((app, index) => (
-                  <McpAppCard
-                    key={`${app.title}-${app.paths.svg ?? app.paths.md ?? index}`}
-                    app={app}
-                    onOpenPath={(path) => {
-                      setLayout('code');
-                      setWorkspaceSide('explorer');
-                      setOpenPathRequest({ path, view: 'file' });
-                    }}
-                  />
-                ))}
-                {m.text ? (
-                  <MarkdownBody
-                    text={m.text}
-                    streaming={Boolean(m.streaming)}
-                    onOpenFile={(path) => {
-                      setLayout('code');
-                      setWorkspaceSide('explorer');
-                      setOpenPathRequest({ path, view: 'file' });
-                    }}
-                  />
-                ) : null}
-                {chatLayout === 'chat' &&
-                m.fileChanges &&
-                m.fileChanges.files.length > 0 ? (
-                  <FileChangesCard
-                    changes={m.fileChanges}
-                    onOpenFile={(path) => {
-                      setLayout('code');
-                      setWorkspaceSide('git');
-                      setOpenPathRequest({ path, view: 'diff' });
-                      setPinnedPaths((prev) =>
-                        prev.includes(path)
-                          ? prev
-                          : [...prev, path].slice(0, 32),
-                      );
-                    }}
-                  />
-                ) : null}
-              </>
-            ) : (
-              <div className="turn__user">{m.text}</div>
-            )}
-          </div>
-        ))
+          );
+        })
       )}
       <div ref={feedEndRef} className="feed-end" aria-hidden />
     </div>

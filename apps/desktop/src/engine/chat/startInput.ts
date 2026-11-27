@@ -58,6 +58,11 @@ export async function buildStartInput(
     : undefined;
   const taskListParse = taskListSchema.safeParse(body.taskList);
   const taskList = taskListParse.success ? taskListParse.data : undefined;
+  const completedPlanStepIds = Array.isArray(body.completedPlanStepIds)
+    ? body.completedPlanStepIds.filter(
+        (id): id is string => typeof id === 'string' && id.trim().length > 0,
+      )
+    : undefined;
   const modelRaw =
     (typeof body.model === 'string' && body.model.trim()
       ? body.model.trim()
@@ -96,6 +101,9 @@ export async function buildStartInput(
     ...(approvedPlan ? { approvedPlan } : {}),
     ...(approvedPlanStrategy ? { approvedPlanStrategy } : {}),
     ...(taskList ? { taskList } : {}),
+    ...(completedPlanStepIds && completedPlanStepIds.length > 0
+      ? { completedPlanStepIds }
+      : {}),
     ...(extras.budget ? { budget: extras.budget } : {}),
     ...(extras.loopPolicy ? { loopPolicy: extras.loopPolicy } : {}),
     ...(extras.v8LoopPolicy ? { v8LoopPolicy: extras.v8LoopPolicy } : {}),

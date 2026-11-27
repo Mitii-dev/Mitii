@@ -34,6 +34,14 @@ export function resolvePlanExit(
   }
 
   if (input.hollow) {
+    // Agent keeps moving (research/execute) instead of a hollow "Plan needed"
+    // clarify that strips the original ask on go-ahead resume.
+    if (input.mode === "agent") {
+      return {
+        kind: "continue_internal",
+        reasonCodes: ["plan_exit_hollow_agent_continue"],
+      };
+    }
     return {
       kind: "suspend_clarify_hollow",
       reasonCodes: ["plan_exit_hollow_clarify"],

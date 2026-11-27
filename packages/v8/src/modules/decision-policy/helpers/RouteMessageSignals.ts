@@ -179,10 +179,25 @@ export function looksLikeAgentVerificationRequest(message: string): boolean {
 /**
  * Short agent follow-ups that mean "proceed with the write" after a proposal
  * ("continue", "yes", "go ahead", "do it") — not more Q&A.
+ * Also matches host Continue / next-slice CTA prompts (may be longer).
  */
 export function looksLikeAgentExecuteContinue(message: string): boolean {
   const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
-  if (text.length === 0 || text.length > 64) {
+  if (text.length === 0) {
+    return false;
+  }
+  // Desktop / chat leftover Continue — always execute the open desk item.
+  if (
+    /^continue with the next (?:plan item|slice|step|item)\b/i.test(text) ||
+    /^start next(?:\s+slice|\s+step|\s+item)?\.?[!]?$/i.test(text) ||
+    /^start the next (?:slice|step|item)\b/i.test(text) ||
+    /^yes[,.]?\s+(?:please\s+)?(?:start|continue)(?:\s+the\s+next)?/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (text.length > 64) {
     return false;
   }
   return (

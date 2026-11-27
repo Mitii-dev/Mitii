@@ -203,7 +203,8 @@ export async function applyPostPlanTaskListGate(params: {
       suspension: {
         kind: suspendKind,
         rationale,
-        clarificationPrompt: rationale,
+        clarificationPrompt: "Plan needed before building.",
+        clarifyOrigin: "hollow_plan",
       },
       reasonCodes,
     }),

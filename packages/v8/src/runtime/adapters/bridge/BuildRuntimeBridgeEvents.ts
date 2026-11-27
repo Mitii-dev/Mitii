@@ -230,20 +230,44 @@ export function buildRuntimeBridgeEvents(params: {
         at,
       });
     }
+    const runnerStatus = verify.runnerStatus;
+    const hollowInline =
+      Array.isArray(verify.reasonCodes) &&
+      verify.reasonCodes.includes("verification_runner_inline");
+    const reallyPassed = runnerStatus === "passed" && !hollowInline;
+    const status = verify.invalidated || !reallyPassed
+      ? "implemented_unverified"
+      : "verified_success";
+    const reasonCodes = verify.invalidated
+      ? (["stale_state_risk"] as const)
+      : reallyPassed
+        ? (["checks_passed"] as const)
+        : runnerStatus === "failed" || runnerStatus === "blocked"
+          ? (["checks_failed"] as const)
+          : runnerStatus === "unavailable" || hollowInline
+            ? (["checks_unavailable"] as const)
+            : runnerStatus === "skipped"
+              ? (["verification_not_required"] as const)
+              : (["no_applicable_checks"] as const);
     events.push({
       type: "verification_completed",
       runId,
-      status: verify.invalidated
-        ? "implemented_unverified"
-        : "verified_success",
-      reasonCodes: verify.invalidated
-        ? ["stale_state_risk"]
-        : ["checks_passed"],
+      status,
+      reasonCodes: [...reasonCodes],
+      // Structured check objects come from the verification module; runtime
+      // sketch only carries check ids — keep empty here rather than inventing.
       checks: [],
       diagnostics: [],
-      warnings: verify.invalidated
-        ? ["verify_invalidated_after_mutate"]
-        : [],
+      warnings: [
+        ...(verify.invalidated ? ["verify_invalidated_after_mutate"] : []),
+        ...(hollowInline ? ["verify_inline_stub_no_checks"] : []),
+        ...(runnerStatus === "unavailable"
+          ? ["verification_runner_unavailable"]
+          : []),
+        ...((verify.checksRun?.length ?? 0) > 0
+          ? [`verify_checks:${verify.checksRun!.slice(0, 8).join(",")}`]
+          : []),
+      ],
       at,
     });
     events.push({

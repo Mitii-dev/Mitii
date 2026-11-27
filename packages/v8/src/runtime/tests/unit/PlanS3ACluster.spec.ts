@@ -130,10 +130,19 @@ describe("S3A STEER / WINDOW / EXIT / TASKLIST", () => {
 
     expect(
       resolvePlanExit({
+        mode: "plan",
         planRan: true,
         hollow: true,
       }).kind,
     ).toBe("suspend_clarify_hollow");
+
+    expect(
+      resolvePlanExit({
+        mode: "agent",
+        planRan: true,
+        hollow: true,
+      }).kind,
+    ).toBe("continue_internal");
   });
 
   it("assertWindowBand + splitPlanExecuteBudgets", () => {

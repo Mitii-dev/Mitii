@@ -7,8 +7,8 @@ import {
   TokenMeter,
 } from '@mitii/ui-react';
 import { DatabaseModeBanner, isDatabaseMcpServer } from './DatabaseModeBanner.js';
-import { PlanFollowStrip } from './PlanFollowStrip.js';
 import { ComposerReviewStrip } from './ComposerReviewStrip.js';
+import { ContinueSliceBar } from './ContinueSliceBar.js';
 import { fetchCheckpoints, restoreCheckpoint, shortPath } from '../api.js';
 import { type CSSProperties } from 'react';
 import type { AppModel } from '../app/useAppModel.js';
@@ -28,7 +28,6 @@ export function ChatComposer({ m }: { m: AppModel }) {
     dbAccess,
     setLayout,
     setWorkspaceSide,
-    planFollowView,
     setOpenPathRequest,
     showComposerReview,
     activeReviewFindings,
@@ -90,7 +89,8 @@ export function ChatComposer({ m }: { m: AppModel }) {
           suspension?.kind !== 'plan_approval_required'
         }
         busy={busy}
-        description="Execute in Agent to implement it."
+        description="Build to implement it."
+        primaryLabel="Build"
         onExecuteInAgent={executePendingPlan}
         onDismiss={dismissPendingPlan}
       />
@@ -116,23 +116,15 @@ export function ChatComposer({ m }: { m: AppModel }) {
           setWorkspaceSide('mcp');
         }}
       />
-      <PlanFollowStrip
-        plan={
-          pendingPlan && (mode === 'plan' || mode === 'agent')
-            ? planFollowView
-            : null
-        }
-        running={busy && (mode === 'plan' || mode === 'agent')}
-        onOpenPlanFile={(path) => {
-          setLayout('code');
-          setWorkspaceSide('explorer');
-          setOpenPathRequest({ path, view: 'file' });
-        }}
-      />
       {showComposerReview ? (
         <ComposerReviewStrip
           findings={activeReviewFindings}
-          fileChangeCount={latestFileChanges?.files.length ?? 0}
+          fileChangeCount={
+            m.latestFileChangeCount ??
+            latestFileChanges?.totalCount ??
+            latestFileChanges?.files.length ??
+            0
+          }
           files={latestFileChanges?.files ?? []}
           runId={latestReviewRunId}
           totalAdditions={latestFileChanges?.totalAdditions ?? 0}
@@ -222,13 +214,24 @@ export function ChatComposer({ m }: { m: AppModel }) {
             setReviewFindings([]);
             setReviewDismissed(true);
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === latestAssistantWithChanges?.id
-                  ? { ...m, fileChanges: undefined }
-                  : m,
+              prev.map((row) =>
+                row.id === latestAssistantWithChanges?.id
+                  ? { ...row, fileChanges: undefined }
+                  : row,
               ),
             );
           }}
+        />
+      ) : null}
+      {m.showContinueSliceBar && m.chatLayout === 'code' ? (
+        <ContinueSliceBar
+          title={
+            m.pendingTaskList?.items.find(
+              (item) => item.status === 'pending' || item.status === 'active',
+            )?.title ?? m.pendingNextActionPrompt ?? undefined
+          }
+          busy={busy}
+          onContinue={m.continueNextSlice}
         />
       ) : null}
       <form

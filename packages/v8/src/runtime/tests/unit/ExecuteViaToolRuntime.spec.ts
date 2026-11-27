@@ -26,6 +26,28 @@ describe("grantSurfaceToToolGrant", () => {
     });
     expect(grant.approvalMode).toBe("every_mutation");
   });
+
+  it("preserves commandRules and defaults them for process tools", () => {
+    const withRules = grantSurfaceToToolGrant({
+      allowedTools: ["run_readonly_command"],
+      maximumWorkspaceEffect: "read",
+      allowedEffects: ["workspace_read"],
+      commandRules: [
+        { prefixes: ["node", "pnpm"], allowShellMetacharacters: false },
+      ],
+    });
+    expect(withRules.commandRules?.[0]?.prefixes).toEqual(["node", "pnpm"]);
+    expect(withRules.allowedEffects).toContain("process_execute");
+
+    const fallback = grantSurfaceToToolGrant({
+      allowedTools: ["run_readonly_command"],
+      maximumWorkspaceEffect: "read",
+      allowedEffects: ["workspace_read"],
+    });
+    expect(fallback.commandRules?.[0]?.prefixes).toEqual(
+      expect.arrayContaining(["node", "pnpm", "git status"]),
+    );
+  });
 });
 
 describe("executeViaToolRuntime", () => {

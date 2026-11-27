@@ -8,10 +8,14 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import {
+  FILE_CHANGES_DISPLAY_CAP,
+  capPathsForFileChangesDisplay,
+  collectAgentCausedPaths,
   countDiffStats,
   inferStatusFromDiff,
   type DesktopFileChangeEntry,
   type DesktopFileChanges,
+  type DirtyPathSnapshot,
 } from '../../shared/fileChanges.js';
 import {
   flattenWorkingTreeFiles,
@@ -179,20 +183,72 @@ export async function getGitFileDiff(
   return { path: filePath, diff: synthesized.slice(0, 48_000) };
 }
 
-/** Build a chat-facing summary of changed files (diffs + line stats). */
+async function dirtySnapshotsWithMtime(
+  workspaceRoot: string,
+): Promise<DirtyPathSnapshot[]> {
+  const status = await getGitStatus(workspaceRoot);
+  const out: DirtyPathSnapshot[] = [];
+  // Cap stats so huge dirty trees stay responsive.
+  for (const file of status.files.slice(0, 2_000)) {
+    const rel = file.path.replace(/\\/g, '/').trim();
+    if (!rel) continue;
+    try {
+      const st = await fs.stat(path.resolve(workspaceRoot, rel));
+      out.push({ path: rel, mtimeMs: st.mtimeMs });
+    } catch {
+      out.push({ path: rel });
+    }
+  }
+  return out;
+}
+
+/**
+ * Build a chat-facing summary of agent-caused file changes.
+ * When beforePaths/sinceMs are set, unions write paths with dirty-tree delta
+ * (including already-dirty files rematerialized by process tools).
+ */
 export async function getGitFileChangesSummary(
   workspaceRoot: string,
   paths: string[],
+  options?: {
+    beforePaths?: readonly string[];
+    sinceMs?: number;
+  },
 ): Promise<DesktopFileChanges> {
-  const unique = [
-    ...new Set(paths.map((p) => p.replace(/\\/g, '/').trim()).filter(Boolean)),
-  ].slice(0, 40);
+  const writePaths = paths
+    .map((p) => p.replace(/\\/g, '/').trim())
+    .filter(Boolean);
+
+  let agentPaths = writePaths;
+  if (
+    options?.beforePaths ||
+    typeof options?.sinceMs === 'number' ||
+    writePaths.length === 0
+  ) {
+    const afterDirty = await dirtySnapshotsWithMtime(workspaceRoot);
+    const beforeDirty: DirtyPathSnapshot[] = (options?.beforePaths ?? []).map(
+      (pathValue) => ({
+        path: pathValue.replace(/\\/g, '/').trim(),
+      }),
+    );
+    agentPaths = collectAgentCausedPaths({
+      writePaths,
+      beforeDirty,
+      afterDirty,
+      ...(typeof options?.sinceMs === 'number'
+        ? { sinceMs: options.sinceMs }
+        : {}),
+    });
+  }
+
+  const { displayPaths, totalCount, truncated } =
+    capPathsForFileChangesDisplay(agentPaths, FILE_CHANGES_DISPLAY_CAP);
 
   const files: DesktopFileChangeEntry[] = [];
   let totalAdditions = 0;
   let totalDeletions = 0;
 
-  for (const filePath of unique) {
+  for (const filePath of displayPaths) {
     const { diff } = await getGitFileDiff(workspaceRoot, filePath);
     const stats = countDiffStats(diff);
     const status = inferStatusFromDiff(diff, 'M');
@@ -207,5 +263,11 @@ export async function getGitFileChangesSummary(
     });
   }
 
-  return { files, totalAdditions, totalDeletions };
+  return {
+    files,
+    totalCount,
+    truncated,
+    totalAdditions,
+    totalDeletions,
+  };
 }

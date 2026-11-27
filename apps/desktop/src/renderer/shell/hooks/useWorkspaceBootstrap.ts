@@ -39,7 +39,7 @@ export function useWorkspaceBootstrap(deps: Pick<
     'historyWorkspaceRef' | 'setHistory' | 'setHistoryLoading' | 'pendingThreadRef'
     | 'pendingNewChatRef' | 'setThreadId' | 'setMessages' | 'setPendingPlan'
     | 'setPendingPlanStrategy' | 'setPendingTaskList' | 'setCompletedPlanStepIds'
-    | 'setTokenUsage' | 'setSuspension'
+    | 'setPendingNextActionPrompt' | 'setTokenUsage' | 'setSuspension'
   > &
   Pick<
     ReturnType<typeof useShellUiState>,
@@ -71,6 +71,7 @@ export function useWorkspaceBootstrap(deps: Pick<
     setPendingPlanStrategy,
     setPendingTaskList,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     setTokenUsage,
     setSuspension,
     setView,
@@ -135,6 +136,7 @@ export function useWorkspaceBootstrap(deps: Pick<
             setPendingPlanStrategy(null);
             setPendingTaskList(null);
             setCompletedPlanStepIds(new Set());
+            setPendingNextActionPrompt(null);
             setTokenUsage(emptyTokenUsage());
             setSuspension(null);
             setView('chat');
@@ -192,6 +194,20 @@ export function useWorkspaceBootstrap(deps: Pick<
           setPendingTaskList(
             (active?.pendingTaskList as TaskList | undefined) ?? null,
           );
+          setCompletedPlanStepIds(
+            new Set(
+              Array.isArray(active?.completedPlanStepIds)
+                ? active.completedPlanStepIds.filter(
+                    (id): id is string => typeof id === 'string',
+                  )
+                : [],
+            ),
+          );
+          setPendingNextActionPrompt(
+            typeof active?.pendingNextActionPrompt === 'string'
+              ? active.pendingNextActionPrompt
+              : null,
+          );
           setTokenUsage(tokenUsageFromThread(active));
         } else {
           if (active?.pendingPlan) {
@@ -203,6 +219,20 @@ export function useWorkspaceBootstrap(deps: Pick<
             );
             setPendingTaskList(
               (active.pendingTaskList as TaskList | undefined) ?? null,
+            );
+            setCompletedPlanStepIds(
+              new Set(
+                Array.isArray(active.completedPlanStepIds)
+                  ? active.completedPlanStepIds.filter(
+                      (id): id is string => typeof id === 'string',
+                    )
+                  : [],
+              ),
+            );
+            setPendingNextActionPrompt(
+              typeof active.pendingNextActionPrompt === 'string'
+                ? active.pendingNextActionPrompt
+                : null,
             );
           }
           setTokenUsage((current) => {

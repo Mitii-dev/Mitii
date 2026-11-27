@@ -19,6 +19,9 @@ export interface HostStartLoose {
   requiredMcpServerIds?: string[];
   mcpServerIds?: string[];
   turnKind?: RuntimeStartInput["turnKind"];
+  /** Prior-turn campaign checklist (SDK / desktop). */
+  taskList?: RuntimeStartInput["taskList"];
+  completedPlanStepIds?: string[];
   request?: {
     userMessage?: string;
     mode?: string;
@@ -248,6 +251,10 @@ export function adaptHostStartToRuntime(
     ...(userSafetyRuleIds.length > 0 ? { userSafetyRuleIds } : {}),
     ...(turnKind ? { turnKind } : {}),
     ...(conversation ? { conversation } : {}),
+    ...(input.taskList ? { taskList: input.taskList } : {}),
+    ...(input.completedPlanStepIds?.length
+      ? { completedPlanStepIds: input.completedPlanStepIds }
+      : {}),
   });
 
   return { ...start, mode };

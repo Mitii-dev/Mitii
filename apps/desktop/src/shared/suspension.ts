@@ -21,6 +21,8 @@ export interface DesktopSuspension {
   kind: SuspensionKind;
   rationale: string;
   clarificationPrompt?: string;
+  /** Why clarification_required fired (hollow_plan, scope_fork, …). */
+  clarifyOrigin?: string;
   clarificationOptions?: ClarificationOption[];
   continuePrompt?: string;
   planText?: string;
@@ -175,6 +177,9 @@ export function extractSuspension(result: unknown): DesktopSuspension | null {
     rationale,
     ...(asString(s.clarificationPrompt)
       ? { clarificationPrompt: asString(s.clarificationPrompt) }
+      : {}),
+    ...(asString(s.clarifyOrigin)
+      ? { clarifyOrigin: asString(s.clarifyOrigin) }
       : {}),
     ...(clarificationOptions?.length ? { clarificationOptions } : {}),
     ...(asString(s.continuePrompt)

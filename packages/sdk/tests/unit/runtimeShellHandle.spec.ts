@@ -67,6 +67,8 @@ describe('adaptResumeToRuntime', () => {
       mode: 'ask',
     });
     expect(adapted.decision).toBe('clarify_answer');
-    expect(adapted.message).toContain('recursion');
+    expect(adapted.clarifyAnswer).toContain('recursion');
+    // Prior ask stays on message; runtime amends Clarification separately.
+    expect(adapted.message).toBe('fix it');
   });
 });

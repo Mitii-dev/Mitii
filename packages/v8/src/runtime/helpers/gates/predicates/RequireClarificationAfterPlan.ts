@@ -50,13 +50,17 @@ export function requireClarificationAfterPlan(
   ctx: GateContext,
 ): GateVerdict | undefined {
   if (ctx.hollowPlan) {
+    // Agent: never hollow-clarify before/instead of research. Callers continue
+    // internally so discovery + execute can proceed without a "go ahead" loop.
+    if (ctx.mode === "agent") {
+      return undefined;
+    }
     return {
       action: "suspend",
       kind: "clarification_required",
       payload: {
         clarifyOrigin: "hollow_plan",
-        clarificationPrompt:
-          "A plan is needed before implementing this. Share any constraints, or say go ahead so I can draft an exact plan for your approval.",
+        clarificationPrompt: "Plan needed before building.",
       },
       reasonCodes: ["gate_clarify_hollow_plan"],
     };

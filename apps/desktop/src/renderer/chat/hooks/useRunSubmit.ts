@@ -28,6 +28,7 @@ import type { useFeedScroll } from './useFeedScroll.js';
 import type { useEngineLifecycle } from '../../shell/hooks/useEngineLifecycle.js';
 import type { useRunStream } from './useRunStream.js';
 import type { useChatPersistence } from './useChatPersistence.js';
+import { stripContinueCtaFromAnswer } from '../../../shared/fileChanges.js';
 import { type ChatMessage, type HistoryThread } from '../chatTypes.js';
 
 export function useRunSubmit(deps: Pick<
@@ -46,7 +47,8 @@ export function useRunSubmit(deps: Pick<
     | 'editorContext' | 'messages' | 'setMessages' | 'threadId' | 'setThreadId'
     | 'setHistory' | 'pendingPlan' | 'pendingPlanStrategy' | 'pendingTaskList'
     | 'setPendingPlan' | 'setPendingPlanStrategy' | 'setPendingTaskList'
-    | 'setCompletedPlanStepIds' | 'setTokenUsage'
+    | 'completedPlanStepIds' | 'setCompletedPlanStepIds'
+    | 'setPendingNextActionPrompt' | 'setTokenUsage'
   > &
   Pick<
     ReturnType<typeof useShellUiState>,
@@ -66,7 +68,7 @@ export function useRunSubmit(deps: Pick<
   > &
   Pick<
     ReturnType<typeof useRunStream>,
-    'consumeStream' | 'resolveFileChanges'
+    'consumeStream' | 'resolveFileChanges' | 'snapshotDirtyPaths'
   > &
   Pick<
     ReturnType<typeof useChatPersistence>,
@@ -106,7 +108,9 @@ export function useRunSubmit(deps: Pick<
     setPendingPlan,
     setPendingPlanStrategy,
     setPendingTaskList,
+    completedPlanStepIds,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     setTokenUsage,
     setView,
     workspaceInvalidateSeq,
@@ -120,6 +124,7 @@ export function useRunSubmit(deps: Pick<
     ensureDatabaseAccessReady,
     consumeStream,
     resolveFileChanges,
+    snapshotDirtyPaths,
     persistMessages,
   } = deps;
 
@@ -148,6 +153,8 @@ export function useRunSubmit(deps: Pick<
     pilotAutoContinueStreakRef.current = 0;
     setReviewDismissed(false);
     if (!override?.prompt) setInput('');
+    const runStartedAtMs = Date.now();
+    const beforeDirtyPaths = await snapshotDirtyPaths();
 
     const autoPins: string[] = [];
     const toggles = settings.ui.contextToggles;
@@ -293,6 +300,9 @@ export function useRunSubmit(deps: Pick<
               ? { approvedPlanStrategy }
               : {}),
             ...(taskList ? { taskList } : {}),
+            ...(completedPlanStepIds.size > 0
+              ? { completedPlanStepIds: [...completedPlanStepIds] }
+              : {}),
             ...(snap.authToken ? { token: snap.authToken } : {}),
           }),
           assistantId,
@@ -319,22 +329,65 @@ export function useRunSubmit(deps: Pick<
         activity,
         suspension: nextSuspension,
         mutatedPaths,
+        processMutation,
         tokenUsage: nextUsage,
         plan: resultPlan,
         planStrategy: resultPlanStrategy,
         taskList: resultTaskList,
+        completedPlanStepIds: resultCompletedIds,
+        nextActionPrompt: resultNextActionPrompt,
+        pendingCount: resultPendingCount,
       } = streamResult;
 
-      const fileChanges = await resolveFileChanges(mutatedPaths);
-      if (mutatedPaths.length > 0) {
+      const resolvedChanges = await resolveFileChanges(mutatedPaths, {
+        beforePaths: beforeDirtyPaths,
+        sinceMs: runStartedAtMs,
+        includeDirtyDelta:
+          processMutation ||
+          mutatedPaths.length > 0 ||
+          beforeDirtyPaths.length > 0,
+      });
+      const fileChanges = resolvedChanges
+        ? { ...resolvedChanges, runId: assistantId }
+        : mutatedPaths.length > 0
+          ? {
+              runId: assistantId,
+              files: mutatedPaths.map((path) => ({
+                path,
+                status: 'M' as const,
+                additions: 0,
+                deletions: 0,
+              })),
+              totalCount: mutatedPaths.length,
+              totalAdditions: 0,
+              totalDeletions: 0,
+            }
+          : undefined;
+      if (
+        mutatedPaths.length > 0 ||
+        (fileChanges?.totalCount ?? fileChanges?.files.length ?? 0) > 0
+      ) {
         workspaceInvalidateSeq.current += 1;
         setWorkspaceInvalidate({
           seq: workspaceInvalidateSeq.current,
-          paths: mutatedPaths,
+          paths:
+            mutatedPaths.length > 0
+              ? mutatedPaths
+              : (fileChanges?.files.map((file) => file.path) ?? []),
         });
       }
 
-      let finalAssistant = assistant;
+      const hasOpenSliceWorkPreview =
+        Boolean(resultNextActionPrompt) ||
+        (typeof resultPendingCount === 'number' && resultPendingCount > 0) ||
+        Boolean(
+          resultTaskList?.items.some(
+            (item) => item.status === 'pending' || item.status === 'active',
+          ),
+        );
+      let finalAssistant = hasOpenSliceWorkPreview
+        ? stripContinueCtaFromAnswer(assistant)
+        : assistant;
       if (!finalAssistant.trim() && !nextSuspension) {
         finalAssistant =
           'No reply from the model. Check Settings → Provider.';
@@ -355,11 +408,21 @@ export function useRunSubmit(deps: Pick<
       );
 
       const usedPlanHandoff = Boolean(approvedPlan) && runMode === 'agent';
+      const hasOpenSliceWork =
+        Boolean(resultNextActionPrompt) ||
+        (typeof resultPendingCount === 'number' && resultPendingCount > 0) ||
+        Boolean(
+          resultTaskList?.items.some(
+            (item) => item.status === 'pending' || item.status === 'active',
+          ),
+        );
       let planPersist:
         | {
             pendingPlan?: PlanArtifact | null;
             pendingPlanStrategy?: PlanStrategyDecision | null;
             pendingTaskList?: TaskList | null;
+            completedPlanStepIds?: string[] | null;
+            pendingNextActionPrompt?: string | null;
             clearPendingPlan?: boolean;
           }
         | undefined;
@@ -372,6 +435,15 @@ export function useRunSubmit(deps: Pick<
           ? synthesizePlanArtifactFromAnswer(finalAssistant)
           : undefined);
 
+      if (resultCompletedIds?.length) {
+        setCompletedPlanStepIds(new Set(resultCompletedIds));
+      }
+      if (resultNextActionPrompt) {
+        setPendingNextActionPrompt(resultNextActionPrompt);
+      } else if (!hasOpenSliceWork) {
+        setPendingNextActionPrompt(null);
+      }
+
       if (pendingFromRun) {
         setPendingPlan(pendingFromRun);
         setPendingPlanStrategy(resultPlanStrategy ?? null);
@@ -380,16 +452,47 @@ export function useRunSubmit(deps: Pick<
           pendingPlan: pendingFromRun,
           pendingPlanStrategy: resultPlanStrategy ?? null,
           pendingTaskList: resultTaskList ?? null,
+          ...(resultCompletedIds?.length
+            ? { completedPlanStepIds: resultCompletedIds }
+            : {}),
+          ...(resultNextActionPrompt
+            ? { pendingNextActionPrompt: resultNextActionPrompt }
+            : hasOpenSliceWork
+              ? {}
+              : { pendingNextActionPrompt: null }),
+        };
+      } else if (hasOpenSliceWork) {
+        // Partial slice — keep the checklist / next CTA; do not clear on Build handoff.
+        if (resultTaskList) setPendingTaskList(resultTaskList);
+        planPersist = {
+          ...(resultTaskList ? { pendingTaskList: resultTaskList } : {}),
+          ...(resultCompletedIds?.length
+            ? { completedPlanStepIds: resultCompletedIds }
+            : {}),
+          ...(resultNextActionPrompt
+            ? { pendingNextActionPrompt: resultNextActionPrompt }
+            : {}),
         };
       } else if (usedPlanHandoff || override?.clearPendingPlanAfter) {
         setPendingPlan(null);
         setPendingPlanStrategy(null);
         setPendingTaskList(null);
         setCompletedPlanStepIds(new Set());
+        setPendingNextActionPrompt(null);
         planPersist = { clearPendingPlan: true };
-      } else if (resultTaskList) {
-        setPendingTaskList(resultTaskList);
-        planPersist = { pendingTaskList: resultTaskList };
+      } else if (resultTaskList || resultNextActionPrompt) {
+        if (resultTaskList) setPendingTaskList(resultTaskList);
+        planPersist = {
+          ...(resultTaskList ? { pendingTaskList: resultTaskList } : {}),
+          ...(resultCompletedIds?.length
+            ? { completedPlanStepIds: resultCompletedIds }
+            : {}),
+          ...(resultNextActionPrompt
+            ? { pendingNextActionPrompt: resultNextActionPrompt }
+            : hasOpenSliceWork
+              ? {}
+              : { pendingNextActionPrompt: null }),
+        };
       }
 
       await persistMessages(
@@ -440,10 +543,12 @@ export function useRunSubmit(deps: Pick<
     pendingPlan,
     pendingPlanStrategy,
     pendingTaskList,
+    completedPlanStepIds,
     pinnedMcpIds,
     pinnedPaths,
     pinnedSkillIds,
     resolveFileChanges,
+    snapshotDirtyPaths,
     scrollToBottom,
     settings.ui.contextToggles,
     snapshot,

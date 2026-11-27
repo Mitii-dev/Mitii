@@ -12,11 +12,13 @@ import {
   enforcePlanQuality,
   rejectHollowPlan,
   resolvePlanExit,
+  seedExecutionTaskListFromObjective,
   shouldRunPlanPipeline,
   type PlanPhaseTelemetry,
 } from "../../helpers/plan";
 import { buildPlanningInputFromRuntime } from "../../helpers/plan/BuildPlanningInputFromRuntime";
 import {
+  clipDiscoveryObjective,
   runDiscoveryPass,
   shouldRunDiscoveryPass,
   type RunDiscoveryPassResult,
@@ -111,16 +113,29 @@ export async function planPipeline(
   let discoveryBrief: DiscoveryBrief | undefined;
 
   if (discoverGate.run) {
-    const discoveryList = beginDiscoveryTaskList(
-      pack?.request?.text?.slice(0, 80) ?? "Investigating request",
-    );
-    ctx.store.setSlice("taskList", discoveryList.taskList);
+    const priorDesk = ctx.store.getSlice<{
+      purpose?: string;
+      source?: string;
+      items?: unknown[];
+    }>("taskList");
+    const sealedBeforeDiscovery =
+      Boolean(priorDesk?.items?.length) &&
+      priorDesk?.purpose !== "discovery" &&
+      priorDesk?.source !== "discovery";
+    // Never clobber a sealed campaign checklist with a temp discovery list.
+    if (!sealedBeforeDiscovery) {
+      const discoveryList = beginDiscoveryTaskList(
+        pack?.request?.text?.slice(0, 80) ?? "Investigating request",
+      );
+      ctx.store.setSlice("taskList", discoveryList.taskList);
+    }
 
     const toolsAvailable = ctx.deps?.tools != null;
     discoveryResult = await runDiscoveryPass({
-      objective:
+      objective: clipDiscoveryObjective(
         pack?.request?.text?.trim() ||
-        "Discover repository evidence for planning",
+          "Discover repository evidence for planning",
+      ),
       pack,
       budget: discoveryBudget,
       tools: ctx.deps?.tools,
@@ -163,14 +178,40 @@ export async function planPipeline(
   const { hollowCheck, quality, effectiveHollow, discoveryQualityFailed } =
     gates;
 
-  const derived = deriveTaskListAfterPlan({
-    plan: artifact,
-    maxTasks: ctx.store.getSlice<{ taskList?: { maxTasks?: number } }>(
-      "windowPolicy",
-    )?.taskList?.maxTasks,
-  });
-  if (derived.taskList) {
-    ctx.store.setSlice("taskList", derived.taskList);
+  const currentDesk = ctx.store.getSlice<{
+    purpose?: string;
+    source?: string;
+    items?: unknown[];
+  }>("taskList");
+  const hasSealedExecutionDesk =
+    Boolean(currentDesk?.items?.length) &&
+    currentDesk?.purpose !== "discovery" &&
+    currentDesk?.source !== "discovery";
+  let taskListSeeded = false;
+  let derived: ReturnType<typeof deriveTaskListAfterPlan> = {
+    status: "skipped",
+    reasonCodes: hasSealedExecutionDesk
+      ? ["tasklist_keep_sealed_execution"]
+      : ["tasklist_derive_deferred"],
+  };
+  // Cursor-like: one sealed campaign checklist. Never grow / replace an open
+  // execution desk on re-plan; only derive or seed when empty / discovery.
+  if (!hasSealedExecutionDesk) {
+    derived = deriveTaskListAfterPlan({
+      plan: artifact,
+      maxTasks: ctx.store.getSlice<{ taskList?: { maxTasks?: number } }>(
+        "windowPolicy",
+      )?.taskList?.maxTasks,
+    });
+    if (derived.taskList) {
+      ctx.store.setSlice("taskList", derived.taskList);
+    } else if (ctx.mode === "agent" || decision.route === "plan") {
+      const seeded = seedExecutionTaskListFromObjective(
+        pack?.request?.text?.trim() || "Complete requested work",
+      );
+      ctx.store.setSlice("taskList", seeded.taskList);
+      taskListSeeded = true;
+    }
   }
 
   const planExit = resolvePlanExit({
@@ -233,7 +274,7 @@ export async function planPipeline(
     quality,
     planningStatus: result.status,
     planTitle: artifact?.objective,
-    taskListDerived: derived.status === "applied",
+    taskListDerived: derived.status === "applied" || taskListSeeded,
     planExit,
     telemetry,
     reasonCodes: [
@@ -255,6 +296,7 @@ export async function planPipeline(
           ]),
       ...quality.reasonCodes,
       ...derived.reasonCodes,
+      ...(taskListSeeded ? ["tasklist_seeded_from_objective"] : []),
       ...planExit.reasonCodes,
       ...telemetry.reasonCodes,
     ],

@@ -35,6 +35,8 @@ export interface SelectDecisionPlateInput {
   secondaryTaskIntents?: readonly string[];
   priorRoute?: string;
   endingPosture?: EndingPosture;
+  /** Open execution checklist from prior turn — Continue means next slice. */
+  openExecutionChecklist?: boolean;
 }
 
 /**
@@ -67,6 +69,47 @@ export function selectDecisionPlate(
     };
   }
 
+  // Open checklist / host Continue CTA → execute next desk item (Cursor-like).
+  // Pure status/Q&A ballots still fall through unless the message itself is a
+  // continue/next-slice prompt.
+  const continuePrompt =
+    typeof input.message === "string" &&
+    looksLikeAgentExecuteContinue(input.message);
+  const openChecklistPureQuestion =
+    !continuePrompt &&
+    input.interactionIntent === "question" &&
+    (input.primaryTaskIntent === "question" ||
+      input.primaryTaskIntent === "review" ||
+      input.primaryTaskIntent === "docs");
+  if (
+    input.mode === "agent" &&
+    (continuePrompt || input.openExecutionChecklist === true) &&
+    !openChecklistPureQuestion &&
+    (input.turnKind === "follow_up" ||
+      input.turnKind === "continue" ||
+      input.turnKind === "steer" ||
+      continuePrompt)
+  ) {
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      continuePrompt
+        ? "plate_continue_prompt_execute"
+        : "plate_open_checklist_continue",
+    ]);
+  }
+
+  // Agent: same seal — soft askUser must not hollow-clarify before research.
+  if (nag.askUser && input.mode === "agent") {
+    return {
+      ...planVisiblePlate,
+      reasonCodes: [
+        ...planVisiblePlate.reasonCodes,
+        ...nag.reasonCodes,
+        "plate_agent_mode_defers_anti_nag_clarify",
+      ],
+    };
+  }
+
   if (nag.askUser) {
     return {
       ...clarifyPlate,
@@ -82,6 +125,7 @@ export function selectDecisionPlate(
     interactionIntent: input.interactionIntent,
     primaryTaskIntent: input.primaryTaskIntent,
     secondaryTaskIntents: input.secondaryTaskIntents,
+    openExecutionChecklist: input.openExecutionChecklist === true,
   });
 
   if (continuity.preferredRoute === "execute") {
@@ -198,6 +242,16 @@ export function selectDecisionPlate(
       input.risk === "critical") &&
     !localizedCreate
   ) {
+    // Agent complex campaigns: Plan→Build (research + draft + approve) instead
+    // of execute-visible hollow clarify with zero tools.
+    if (input.mode === "agent") {
+      return withNag(planVisiblePlate, [
+        ...nag.reasonCodes,
+        ...continuity.reasonCodes,
+        depthReason,
+        "plate_agent_visible_seals_plan_first",
+      ]);
+    }
     return withNag(executeVisiblePlate, [
       ...nag.reasonCodes,
       ...continuity.reasonCodes,

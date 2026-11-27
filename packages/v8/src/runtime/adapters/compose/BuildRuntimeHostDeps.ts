@@ -16,6 +16,7 @@ import type { RuntimeEnrichRetrievalPorts } from "../../ports/RuntimeEnrichRetri
 import type { RuntimeRepoContextRetrievalPort } from "../../ports/RuntimeEnrichRetrievalPorts";
 import { createMemoryPipelineCommit } from "../memory/CreateMemoryPipelineCommit";
 import type { VerificationInputFactory } from "../verification/CreatePipelineVerificationRunner";
+import { buildVerificationInputFromRequest } from "./BuildVerificationInputFromRequest";
 
 export type BuildRuntimeHostDepsInput = {
   skillsCatalog?: SkillsCatalogPort;
@@ -190,8 +191,17 @@ function buildVerificationInputFactory(options: {
     if (!request) return undefined;
     const latest = await options.repositoryState.getLatest(options.workspaceId);
     if (!latest) return undefined;
-    // Host VerificationRequest → full VerificationInput needs projects/grant;
-    // when incomplete, runner stays unavailable (ask routes skip verify anyway).
-    return undefined;
+    return buildVerificationInputFromRequest({
+      workspaceRoot: options.workspaceRoot,
+      workspaceId: latest.workspaceId,
+      stateToken: latest.stateToken,
+      stateReadiness:
+        latest.readiness === "ready" ||
+        latest.readiness === "degraded" ||
+        latest.readiness === "unavailable"
+          ? latest.readiness
+          : "ready",
+      request,
+    });
   };
 }

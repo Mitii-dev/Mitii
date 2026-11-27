@@ -54,6 +54,31 @@ describe("defaultGrantFromDecision", () => {
       expect.arrayContaining(["glob_files", "list_directory", "read_file"]),
     );
   });
+
+  it("forwards commandRules from compiled toolGrant", () => {
+    const decision = {
+      grantProfile: "agent_execute",
+      toolGrant: {
+        maximumWorkspaceEffect: "write",
+        allowedTools: ["read_file", "run_readonly_command", "apply_patch"],
+        allowedEffects: ["workspace_read", "workspace_write", "process_execute"],
+        pathScopes: ["."],
+        approvalMode: "never",
+        commandRules: [
+          { prefixes: ["node", "pnpm", "git status"], allowShellMetacharacters: false },
+        ],
+        limits: {
+          maxToolCalls: 24,
+          maxWallTimeMs: 90_000,
+          maxOutputBytes: 256_000,
+        },
+      },
+    } as RuntimeDecisionSketch;
+    const grant = defaultGrantFromDecision(decision);
+    expect(grant.commandRules?.[0]?.prefixes).toEqual(
+      expect.arrayContaining(["node", "pnpm"]),
+    );
+  });
 });
 
 describe("prompt ⊆ grant", () => {

@@ -40,6 +40,19 @@ describe("applyContinuityBias", () => {
     expect(result.preferredRoute).toBe("execute");
   });
 
+  it("open checklist continues execute without re-plan", () => {
+    const result = applyContinuityBias({
+      mode: "agent",
+      turnKind: "follow_up",
+      endingPosture: "mutated",
+      interactionIntent: "unknown",
+      primaryTaskIntent: "feature",
+      openExecutionChecklist: true,
+    });
+    expect(result.preferredRoute).toBe("execute");
+    expect(result.reasonCodes).toContain("continuity_open_checklist");
+  });
+
   it("never promotes ask mode", () => {
     const result = applyContinuityBias({
       mode: "ask",

@@ -11,8 +11,9 @@ import { type HistoryThread } from '../chatTypes.js';
 export function usePlanActions(deps: Pick<
     ReturnType<typeof useChatThreadState>,
     'pendingPlan' | 'busy' | 'pendingPlanStrategy' | 'pendingTaskList'
-    | 'setPendingPlan' | 'setPendingPlanStrategy' | 'setPendingTaskList'
-    | 'setCompletedPlanStepIds' | 'threadId' | 'setHistory'
+    | 'pendingNextActionPrompt' | 'setPendingPlan' | 'setPendingPlanStrategy'
+    | 'setPendingTaskList' | 'setCompletedPlanStepIds'
+    | 'setPendingNextActionPrompt' | 'threadId' | 'setHistory'
   > &
   Pick<
     ReturnType<typeof useComposerState>,
@@ -31,10 +32,12 @@ export function usePlanActions(deps: Pick<
     busy,
     pendingPlanStrategy,
     pendingTaskList,
+    pendingNextActionPrompt,
     setPendingPlan,
     setPendingPlanStrategy,
     setPendingTaskList,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     threadId,
     setHistory,
     setMode,
@@ -61,11 +64,42 @@ export function usePlanActions(deps: Pick<
     pendingTaskList,
   ]);
 
+  const continueNextSlice = useCallback(() => {
+    if (busy) return;
+    const nextTitle = pendingTaskList?.items.find(
+      (item) => item.status === 'pending' || item.status === 'active',
+    )?.title;
+    const prompt =
+      pendingNextActionPrompt?.trim() ||
+      (nextTitle
+        ? `Continue with the next plan item: ${nextTitle}`
+        : 'Continue with the next plan item.');
+    setMode('agent');
+    void onSubmit({
+      prompt,
+      mode: 'agent',
+      ...(pendingPlan ? { approvedPlan: pendingPlan } : {}),
+      ...(pendingPlanStrategy
+        ? { approvedPlanStrategy: pendingPlanStrategy }
+        : {}),
+      ...(pendingTaskList ? { taskList: pendingTaskList } : {}),
+    });
+  }, [
+    busy,
+    onSubmit,
+    pendingNextActionPrompt,
+    pendingPlan,
+    pendingPlanStrategy,
+    pendingTaskList,
+    setMode,
+  ]);
+
   const dismissPendingPlan = useCallback(() => {
     setPendingPlan(null);
     setPendingPlanStrategy(null);
     setPendingTaskList(null);
     setCompletedPlanStepIds(new Set());
+    setPendingNextActionPrompt(null);
     if (!engine || !threadId) return;
     void postHistory({
       ...engine,
@@ -81,6 +115,7 @@ export function usePlanActions(deps: Pick<
 
   return {
     executePendingPlan,
+    continueNextSlice,
     dismissPendingPlan,
   };
 }

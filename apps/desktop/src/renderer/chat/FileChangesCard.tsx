@@ -25,8 +25,10 @@ export function FileChangesCard(props: FileChangesCardProps) {
   const { changes } = props;
   const [expanded, setExpanded] = useState(true);
   const [openDiff, setOpenDiff] = useState<string | null>(null);
-  const n = changes.files.length;
-  if (n === 0) return null;
+  const shown = changes.files.length;
+  const total = changes.totalCount ?? shown;
+  const extra = Math.max(0, total - shown);
+  if (total === 0 && shown === 0) return null;
 
   return (
     <section className="file-changes-card" aria-label="Files changed">
@@ -40,7 +42,8 @@ export function FileChangesCard(props: FileChangesCardProps) {
             {expanded ? '▾' : '▸'}
           </span>
           <strong>
-            {n} file{n === 1 ? '' : 's'} changed
+            {total} file{total === 1 ? '' : 's'} changed
+            {extra > 0 ? ` (+${extra} more)` : ''}
           </strong>
           <span className="diff-add">+{changes.totalAdditions}</span>
           <span className="diff-del">−{changes.totalDeletions}</span>
@@ -86,6 +89,11 @@ export function FileChangesCard(props: FileChangesCardProps) {
               </li>
             );
           })}
+          {extra > 0 ? (
+            <li className="file-changes-card__more">
+              +{extra} more file{extra === 1 ? '' : 's'} (open Git to review all)
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </section>

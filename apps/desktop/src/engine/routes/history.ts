@@ -99,6 +99,18 @@ async function handlePostHistory(ctx: RouteContext): Promise<void> {
             )
               ? { pendingTaskList: body.pendingTaskList }
               : {}),
+            ...(Object.prototype.hasOwnProperty.call(
+              body,
+              'completedPlanStepIds',
+            )
+              ? { completedPlanStepIds: body.completedPlanStepIds }
+              : {}),
+            ...(Object.prototype.hasOwnProperty.call(
+              body,
+              'pendingNextActionPrompt',
+            )
+              ? { pendingNextActionPrompt: body.pendingNextActionPrompt }
+              : {}),
           }),
     });
   } else if (tokenUsage) {
@@ -125,6 +137,15 @@ async function handlePostHistory(ctx: RouteContext): Promise<void> {
         : {}),
       ...(Object.prototype.hasOwnProperty.call(body, 'pendingTaskList')
         ? { pendingTaskList: body.pendingTaskList }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(body, 'completedPlanStepIds')
+        ? { completedPlanStepIds: body.completedPlanStepIds }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(
+        body,
+        'pendingNextActionPrompt',
+      )
+        ? { pendingNextActionPrompt: body.pendingNextActionPrompt }
         : {}),
     });
   } else {

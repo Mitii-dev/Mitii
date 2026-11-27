@@ -49,7 +49,7 @@ export async function gatesAfterPlan(
       planRan: true,
     });
 
-  if (hollow) {
+  if (hollow && ctx.mode !== "agent") {
     const verdict = evaluateGates("after_plan", {
       runId: ctx.store.getStore().runId,
       mode: ctx.mode,
@@ -83,12 +83,28 @@ export async function gatesAfterPlan(
           clarificationPrompt:
             typeof result.payload.clarificationPrompt === "string"
               ? result.payload.clarificationPrompt
-              : "A plan is needed before implementing this. Reply with any constraints, or say go ahead to draft and approve a plan.",
+              : "Plan needed before building.",
+          clarifyOrigin:
+            typeof result.payload.clarifyOrigin === "string"
+              ? result.payload.clarifyOrigin
+              : "hollow_plan",
         },
       };
       ctx.store.setSlice("lastGate", enriched);
       return enriched;
     }
+  }
+
+  if (hollow && ctx.mode === "agent") {
+    ctx.store.setSlice("lastGate", {
+      status: "completed",
+      checkpointSaved: false,
+      reasonCodes: [
+        ...planExit.reasonCodes,
+        "gate_hollow_agent_continue",
+      ],
+      payload: {},
+    });
   }
 
   // Internal plan → no suspend (S3A-EXIT continue_internal).

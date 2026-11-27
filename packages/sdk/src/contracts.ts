@@ -115,6 +115,7 @@ export const mitiiStartInputSchema = z
     approvedPlan: planArtifactSchema.optional(),
     approvedPlanStrategy: planStrategyDecisionSchema.optional(),
     taskList: taskListSchema.optional(),
+    completedPlanStepIds: z.array(z.string().min(1)).max(64).optional(),
     budget: agentRunBudgetSchema.optional(),
     /**
      * Host wall-time budget for this run (ms). Merged into `budget` so the

@@ -80,12 +80,37 @@ export function planStepStatusFromTask(
   }
 }
 
+/** Follow strip from a durable execution checklist (no PlanArtifact needed). */
+export function taskListToFollowView(
+  taskList: TaskList | null | undefined,
+): PlanFollowView | null {
+  if (!taskList?.items?.length) return null;
+  if (taskList.purpose === 'discovery' || taskList.source === 'discovery') {
+    return null;
+  }
+  const steps = taskList.items.slice(0, 24).map((item) => ({
+    id: item.id,
+    title: item.title,
+    status: planStepStatusFromTask(item.status),
+    ...(item.detail ? { detail: item.detail } : {}),
+  }));
+  return {
+    objective: taskList.title ?? 'Campaign checklist',
+    title: (taskList.title ?? 'Campaign checklist').slice(0, 120),
+    steps,
+  };
+}
+
 export function planArtifactToFollowView(
   plan: PlanArtifact | null,
   running: boolean,
   taskList?: TaskList | null,
   completedPlanStepIds?: ReadonlySet<string>,
 ): PlanFollowView | null {
+  // Cursor-like: sealed execution checklist owns progress titles/order.
+  // Plan artifact only supplies statuses when the desk is empty.
+  const deskView = taskListToFollowView(taskList);
+  if (deskView) return deskView;
   if (!plan) return null;
   const steps: NonNullable<PlanFollowView['steps']> = [];
   for (const phase of plan.phases) {

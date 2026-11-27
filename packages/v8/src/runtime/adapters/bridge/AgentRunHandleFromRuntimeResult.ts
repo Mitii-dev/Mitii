@@ -27,6 +27,10 @@ export function createAgentRunHandleFromRuntimeResult(
     runtime.plan && typeof runtime.plan === "object"
       ? (runtime.plan as AgentRunResult["plan"])
       : undefined;
+  const taskList =
+    runtime.taskList && typeof runtime.taskList === "object"
+      ? (runtime.taskList as AgentRunResult["taskList"])
+      : undefined;
 
   const result: AgentRunResult = {
     schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
@@ -44,6 +48,12 @@ export function createAgentRunHandleFromRuntimeResult(
             : undefined)
         : undefined,
     ...(planArtifact ? { plan: planArtifact } : {}),
+    ...(taskList ? { taskList } : {}),
+    ...(runtime.progress ? { progress: runtime.progress } : {}),
+    ...(runtime.completedPlanStepIds?.length
+      ? { completedPlanStepIds: [...runtime.completedPlanStepIds] }
+      : {}),
+    ...(runtime.nextAction ? { nextAction: runtime.nextAction } : {}),
     suspension:
       status === "suspended" && suspensionKind
         ? {
@@ -54,6 +64,10 @@ export function createAgentRunHandleFromRuntimeResult(
                 ? runtime.clarificationPrompt?.trim() ||
                   "Please clarify how to proceed."
                 : undefined,
+            ...(suspensionKind === "clarification_required" &&
+            runtime.clarifyOrigin
+              ? { clarifyOrigin: runtime.clarifyOrigin }
+              : {}),
             ...(suspensionKind === "plan_approval_required" && planArtifact
               ? { plan: planArtifact }
               : {}),

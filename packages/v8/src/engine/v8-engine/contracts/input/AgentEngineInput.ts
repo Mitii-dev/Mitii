@@ -111,6 +111,8 @@ export const agentEngineStartInputSchema = z
      * Engine does not stamp remaining items done when the run finishes.
      */
     taskList: taskListSchema.optional(),
+    /** Plan step ids already completed across prior turns. */
+    completedPlanStepIds: z.array(z.string().min(1)).max(64).optional(),
     /** Optional override; otherwise Engine uses default tool definitions. */
     tools: z.array(modelToolDefinitionSchema).optional(),
     budget: agentRunBudgetSchema.optional(),

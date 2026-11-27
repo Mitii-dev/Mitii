@@ -26,6 +26,9 @@ export function resultToSuspension(
       kind: 'clarification_required',
       rationale: suspension.rationale,
       clarificationPrompt: suspension.clarificationPrompt,
+      ...(suspension.clarifyOrigin
+        ? { clarifyOrigin: suspension.clarifyOrigin }
+        : {}),
       clarificationOptions: suspension.clarificationOptions,
     };
   }
@@ -79,6 +82,29 @@ export async function resolveSuspensionNative(
   if (!suspension) return 'stop';
 
   if (suspension.kind === 'clarification_required') {
+    const isHollowPlan =
+      suspension.clarifyOrigin === 'hollow_plan' ||
+      /plan needed|plan is needed/i.test(
+        `${suspension.clarificationPrompt ?? ''} ${suspension.rationale ?? ''}`,
+      );
+    if (isHollowPlan) {
+      const choice = await vs.window.showQuickPick(
+        [
+          { label: 'Build', description: 'Draft the plan and continue' },
+          { label: 'Stop', description: 'Cancel this run' },
+        ],
+        {
+          placeHolder: 'Plan needed before building',
+          ignoreFocusOut: true,
+        },
+      );
+      if (!choice || choice.label === 'Stop') return 'stop';
+      return {
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: result.runId,
+        clarificationAnswer: 'go ahead',
+      };
+    }
     const promptText = (
       suspension.clarificationPrompt ??
       suspension.rationale ??
@@ -135,7 +161,7 @@ export async function resolveSuspensionNative(
   if (suspension.kind === 'plan_approval_required') {
     const choice = await vs.window.showQuickPick(
       [
-        { label: 'Approve plan', description: 'Continue execution' },
+        { label: 'Build', description: 'Implement the plan' },
         { label: 'Reject plan', description: 'Cancel this run' },
       ],
       {
@@ -149,7 +175,7 @@ export async function resolveSuspensionNative(
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
       runId: result.runId,
       planDecision: {
-        decision: choice.label === 'Approve plan' ? 'approved' : 'rejected',
+        decision: choice.label === 'Build' ? 'approved' : 'rejected',
       },
     };
   }

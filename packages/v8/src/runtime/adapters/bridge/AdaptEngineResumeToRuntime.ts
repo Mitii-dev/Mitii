@@ -29,11 +29,14 @@ export function adaptEngineResumeToRuntime(params: {
   const base = { runId: input.runId, mode };
 
   if (input.clarificationAnswer) {
+    // Keep the original ask as `message`; runtime resume amends with
+    // `\nClarification: …`. Passing only the answer drops the objective and
+    // re-routes thin follow-ups like "go ahead" as read-only research.
     return {
       ...base,
       decision: "clarify_answer",
       clarifyAnswer: input.clarificationAnswer,
-      message: input.clarificationAnswer,
+      message: fallbackMessage,
     };
   }
 

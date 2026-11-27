@@ -115,6 +115,9 @@ export function toAgentEngineStartInput(
     approvedPlan: parsed.approvedPlan,
     approvedPlanStrategy: parsed.approvedPlanStrategy,
     taskList: parsed.taskList,
+    ...(parsed.completedPlanStepIds?.length
+      ? { completedPlanStepIds: parsed.completedPlanStepIds }
+      : {}),
     budget: resolveStartBudget(parsed),
     model: parsed.model,
     temperature: parsed.temperature,

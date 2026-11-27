@@ -70,10 +70,19 @@ describe("evaluateGates", () => {
     });
   });
 
-  it("after_plan suspends for hollow plan", () => {
+  it("after_plan does not hollow-clarify in agent mode", () => {
     const verdict = evaluateGates("after_plan", {
       runId: "r1",
       mode: "agent",
+      hollowPlan: true,
+    });
+    expect(verdict).toBeUndefined();
+  });
+
+  it("after_plan suspends for hollow plan in plan mode", () => {
+    const verdict = evaluateGates("after_plan", {
+      runId: "r1",
+      mode: "plan",
       hollowPlan: true,
     });
     expect(verdict).toMatchObject({
