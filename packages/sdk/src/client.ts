@@ -173,6 +173,7 @@ export class MitiiClient {
       adversary: options.adversary,
       adversaryFailMode: options.adversaryFailMode,
       workspaceRoot: options.workspaceRoot,
+      workspaceId: options.workspaceId,
       implementation: parseV8EngineImplementation(options.engineImplementation),
       preferRuntimeShell: true,
     });

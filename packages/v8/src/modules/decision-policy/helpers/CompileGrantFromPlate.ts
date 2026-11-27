@@ -21,6 +21,8 @@ export interface CompileGrantFromPlateInput {
   /** Hard-caution paths from ScopeVerdict (S2-SCOPE). */
   protectedPathGlobs?: readonly string[];
   mcpServerIds?: readonly string[];
+  /** Host approval preset override (safe / guided / pilot). */
+  approvalMode?: ToolGrant["approvalMode"];
 }
 
 export interface CompileGrantFromPlateResult {
@@ -114,7 +116,8 @@ export function compileGrantFromPlate(
         },
         reasonCodes,
       );
-    case "agent_execute":
+    case "agent_execute": {
+      const approvalMode = input.approvalMode ?? "when_required";
       return wrap(
         {
           maximumWorkspaceEffect: "write",
@@ -136,7 +139,12 @@ export function compileGrantFromPlate(
               allowShellMetacharacters: false,
             },
           ],
-          approvalMode: "when_required",
+          approvalMode,
+          // Guided (when_required): auto-approve routine file writes; still
+          // gate execute / mcp / external via NeedsMutationApproval + skips.
+          ...(approvalMode === "when_required"
+            ? { approvalSkipCategories: ["write" as const] }
+            : {}),
           limits: { ...DEFAULT_TOOL_GRANT_LIMITS },
           ...(input.mcpServerIds?.length
             ? { allowedMcpServerIds: [...input.mcpServerIds] }
@@ -145,8 +153,10 @@ export function compileGrantFromPlate(
         [
           ...reasonCodes,
           ...(fence ? [] : ["grant_mutation_workspace_ceiling"]),
+          `grant_approval_${approvalMode}`,
         ],
       );
+    }
     default: {
       const _exhaustive: never = input.grantProfile;
       void _exhaustive;

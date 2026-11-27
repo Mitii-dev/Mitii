@@ -3,7 +3,7 @@
  * Mirrors VS Code activitySegments for thinking merge + tool replace rules.
  */
 
-import { parsePathsFromToolSummary, WRITE_TOOLS } from './fileChanges.js';
+import { parsePathsFromToolSummary } from './fileChanges.js';
 
 export type DesktopActivityKind =
   | 'info'
@@ -157,24 +157,25 @@ export function runEventToActivity(event: unknown): DesktopActivityItem | null {
     }
     case 'tool_started': {
       const toolName = asString(e.toolName) ?? 'tool';
-      const paths = WRITE_TOOLS.has(toolName)
-        ? parsePathsFromToolSummary(asString(e.summary))
-        : [];
+      const summary = asString(e.summary);
+      const paths = parsePathsFromToolSummary(summary);
       return {
         id,
         at,
         kind: 'tool',
-        title: `Running ${toolName}`,
-        detail: asString(e.summary),
+        title: summary ? `${toolName} · ${summary}` : `Running ${toolName}`,
+        detail: summary,
         status: 'running',
         ...(paths.length ? { paths } : {}),
       };
     }
     case 'tool_completed': {
       const toolName = asString(e.toolName) ?? 'tool';
-      const paths = WRITE_TOOLS.has(toolName)
-        ? parsePathsFromToolSummary(asString(e.summary))
-        : [];
+      const summary = asString(e.summary);
+      const status = asString(e.status) ?? 'done';
+      const reason = asString(e.reasonCode);
+      const preview = asString(e.outputPreview);
+      const paths = parsePathsFromToolSummary(summary);
       const label =
         toolName === 'apply_patch'
           ? paths.length === 1
@@ -182,14 +183,20 @@ export function runEventToActivity(event: unknown): DesktopActivityItem | null {
             : paths.length > 1
               ? `Apply patch · ${paths.length} files`
               : 'Apply patch'
-          : toolName;
+          : summary
+            ? `${toolName} · ${summary}`
+            : toolName;
+      const failed = status === 'failed' || status === 'cancelled';
       return {
         id,
         at,
         kind: 'tool',
-        title: label,
-        detail: asString(e.summary) ?? asString(e.status),
-        status: asString(e.status) ?? 'done',
+        title: failed ? `Failed ${label}` : label,
+        detail:
+          [summary, reason, preview && preview !== reason ? preview : undefined]
+            .filter(Boolean)
+            .join(' · ') || status,
+        status,
         ...(paths.length ? { paths } : {}),
       };
     }

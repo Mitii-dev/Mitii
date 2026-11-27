@@ -473,6 +473,7 @@ export {
   isRuntimeFlowStepId,
   RuntimePipeline,
   composeRuntime,
+  buildRuntimeHostDeps,
   createEmptyStore,
   storeSchema,
   StoreManager,

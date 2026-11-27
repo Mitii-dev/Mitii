@@ -13,6 +13,9 @@ import type { RuntimeStartInput } from "../contracts/input/RuntimeStartInput";
 import type { GrantSurface } from "../tools/CheckToolAgainstGrant";
 import type { RuntimeDependencies } from "../ports/RuntimeDependencies";
 import type { StoreSnapshot } from "../helpers/store/StoreSnapshot";
+import { pushRuntimeProgressEvents } from "../helpers/events/PushRuntimeProgressEvents";
+import type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
+import type { RuntimeDecisionSketch } from "./steps/5-Decide";
 
 export interface RunThroughTurnLoopResult extends RunThroughPlanPipelineResult {
   contextBundle?: ContextBundleSketch;
@@ -28,6 +31,8 @@ export async function runThroughTurnLoop(input: {
   deps?: RuntimeDependencies;
   hydrateSnapshot?: StoreSnapshot;
   abortSignal?: AbortSignal;
+  /** Live sink — emit decided/context/prompt before the turn loop starts. */
+  eventSink?: RuntimeEventSink;
   simulatedToolCalls?: Array<{
     toolId: string;
     args?: unknown;
@@ -49,6 +54,18 @@ export async function runThroughTurnLoop(input: {
     return throughPlan;
   }
 
+  const sink = input.eventSink ?? input.deps?.eventSink;
+  const runId = throughPlan.store.getStore().runId;
+  const decision = throughPlan.decision as RuntimeDecisionSketch | undefined;
+  // Emit progress before the model turn loop so Desktop is not stuck on
+  // "received" for the entire provider round-trip.
+  pushRuntimeProgressEvents(sink, {
+    runId,
+    at: new Date().toISOString(),
+    phase: "decided",
+    route: decision?.route,
+  });
+
   const ctx = {
     store: throughPlan.store,
     input: input.start,
@@ -61,6 +78,18 @@ export async function runThroughTurnLoop(input: {
     input.deps?.enrich != null
       ? await enrichContextWithRetrieval(ctx)
       : enrichContext(ctx);
+
+  pushRuntimeProgressEvents(sink, {
+    runId,
+    at: new Date().toISOString(),
+    phase: "context_ready",
+  });
+  pushRuntimeProgressEvents(sink, {
+    runId,
+    at: new Date().toISOString(),
+    phase: "prompt_ready",
+  });
+
   const turnLoop =
     input.deps?.model != null
       ? await turnLoopWithPorts(ctx, input.deps, { grant: input.grant })

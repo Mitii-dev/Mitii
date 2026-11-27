@@ -8,34 +8,78 @@ export function buildRuntimeUsageSketch(turnLoop: TurnLoopSketch | undefined): {
     toolCalls: number;
     loopIterations: number;
     heartbeats: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheHitTokens?: number;
+    cacheMissTokens?: number;
   };
   toolInvocations: Array<{
     invocationId: string;
     toolId: string;
     status: "succeeded" | "failed" | "pending";
+    summary?: string;
+    reasonCode?: string;
+    outputPreview?: string;
   }>;
 } {
   const journal: ToolInvocationRecord[] = turnLoop?.journal ?? [];
-  const toolInvocations = journal.map((row) => ({
-    invocationId: row.invocationId,
-    toolId: row.toolId,
-    status: mapToolStatus(row.status),
-  }));
+  const summaries = new Map(
+    (turnLoop?.toolSummaries ?? []).map((row) => [row.invocationId, row]),
+  );
+  const toolInvocations = journal.map((row) => {
+    const meta = summaries.get(row.invocationId);
+    return {
+      invocationId: row.invocationId,
+      toolId: row.toolId,
+      status: mapToolStatus(row.status),
+      ...(meta?.summary ? { summary: meta.summary } : {}),
+      ...(meta?.reasonCode ? { reasonCode: meta.reasonCode } : {}),
+      ...(meta?.outputPreview ? { outputPreview: meta.outputPreview } : {}),
+    };
+  });
 
   const usedModel =
-    turnLoop?.reasonCodes.some(
+    (turnLoop?.modelCallCount ?? 0) > 0 ||
+    (turnLoop?.reasonCodes.some(
       (code) =>
-        code.includes("turn_loop_with_ports") ||
-        code.includes("runtime_model") ||
-        code.includes("scripted"),
-    ) ?? false;
+        code.includes("runtime_model") || code.includes("scripted"),
+    ) ??
+      false);
+
+  const modelCalls =
+    typeof turnLoop?.modelCallCount === "number"
+      ? turnLoop.modelCallCount
+      : usedModel
+        ? 1
+        : 0;
+
+  const loopIterations =
+    typeof turnLoop?.loopIterations === "number"
+      ? turnLoop.loopIterations
+      : turnLoop
+        ? 1
+        : 0;
+
+  const totals = turnLoop?.usageTotals;
 
   return {
     usage: {
-      modelCalls: usedModel ? 1 : 0,
+      modelCalls,
       toolCalls: toolInvocations.length,
-      loopIterations: turnLoop ? 1 : 0,
+      loopIterations,
       heartbeats: turnLoop?.heartbeats ?? 0,
+      ...(typeof totals?.inputTokens === "number"
+        ? { inputTokens: totals.inputTokens }
+        : {}),
+      ...(typeof totals?.outputTokens === "number"
+        ? { outputTokens: totals.outputTokens }
+        : {}),
+      ...(typeof totals?.cacheHitTokens === "number"
+        ? { cacheHitTokens: totals.cacheHitTokens }
+        : {}),
+      ...(typeof totals?.cacheMissTokens === "number"
+        ? { cacheMissTokens: totals.cacheMissTokens }
+        : {}),
     },
     toolInvocations,
   };

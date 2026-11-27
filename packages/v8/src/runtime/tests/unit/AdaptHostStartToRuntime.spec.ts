@@ -29,6 +29,8 @@ describe("adaptHostStartToRuntime", () => {
     expect(adapted.requiredSkillIds).toContain("skill.x");
     expect(adapted.requiredMcpServerIds).toContain("mcp.y");
     expect(adapted.history?.compactedTurns).toBe(2);
+    expect(adapted.turnKind).toBe("follow_up");
+    expect(adapted.conversation).toHaveLength(3);
     expect(adapted.git?.branch).toBe("main");
   });
 

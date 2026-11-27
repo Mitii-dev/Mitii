@@ -6,6 +6,7 @@ import {
   taskDirectionAssessmentSchema,
   type TaskDirectionAssessment,
 } from "../../contracts/output/TaskDirectionAssessment";
+import { isContinuationTurnKind } from "../../rules/TurnKindIntentPolicy";
 
 /**
  * Direction ballot from SituationPack-shaped input (§5).
@@ -18,6 +19,7 @@ export function assessDirection(
   const input = directionAnalysisInputSchema.parse(raw);
   const text = input.userCommand.toLowerCase();
   const cues = input.intentCues;
+  const continuation = isContinuationTurnKind(input.turnKind);
 
   let primaryTaskIntent: TaskDirectionAssessment["primaryTaskIntent"] =
     "question";
@@ -30,7 +32,21 @@ export function assessDirection(
   const assumptionsMade: string[] = [];
   const reasonCodes: string[] = ["assess_direction_deterministic"];
 
-  if (cues?.pastedErrorOrStack || /\b(fix|bug|error|crash|stack)\b/.test(text)) {
+  // Knowledge / how-to phrasing wins over verb false positives ("explain how to add…").
+  if (
+    /^(?:please\s+)?(?:explain|describe|summarize|summarise|clarify|compare)\b/.test(
+      text,
+    ) ||
+    /^(?:how\s+(?:do|does|did|can|should|would|to)|what\s+(?:is|are|does)|why\s+)/.test(
+      text,
+    )
+  ) {
+    primaryTaskIntent = "question";
+    interactionIntent = "question";
+  } else if (
+    cues?.pastedErrorOrStack ||
+    /\b(fix|bug|error|crash|stack)\b/.test(text)
+  ) {
     primaryTaskIntent = cues?.pastedErrorOrStack ? "diagnose" : "bugfix";
     interactionIntent = "act";
     difficulty = "moderate";
@@ -61,20 +77,42 @@ export function assessDirection(
   } else if (/\b(review|audit)\b/.test(text)) {
     primaryTaskIntent = "review";
     interactionIntent = "question";
+  } else if (
+    /\b(remove|delete|clear|discard|revert|unstage|clean(?:\s+up)?)\b/.test(
+      text,
+    ) ||
+    /\bgit\s+(?:clean|restore|checkout|reset)\b/.test(text)
+  ) {
+    // Working-tree / file cleanup is a mutation act, not a knowledge question.
+    primaryTaskIntent = "refactor";
+    interactionIntent = "act";
   } else if (cues?.readOnlyAsk) {
     primaryTaskIntent = "question";
     interactionIntent = "question";
     assumptionsMade.push("read_only_constraint");
   }
 
-  if (
-    text.trim().length < 8 ||
-    /^(fix it|do it|help)\b/.test(text.trim())
-  ) {
-    askUserSuggested = true;
-    primaryTaskIntent = "unclear";
-    interactionIntent = "help";
-    reasonCodes.push("assess_vague_command");
+  const trimmed = text.trim();
+  const vagueNudge =
+    trimmed.length < 8 ||
+    /^(?:fix it|do it|help|\?+|go on|continue|and\??|ok|okay|yes|yep)\b/.test(
+      trimmed,
+    );
+
+  if (vagueNudge) {
+    if (continuation) {
+      // Follow-up nudges ("?", "go on") keep prior-chat context — do not clarify.
+      primaryTaskIntent = "question";
+      interactionIntent = "question";
+      askUserSuggested = false;
+      assumptionsMade.push("continue_turn_assume_prior_context");
+      reasonCodes.push("assess_continuation_nudge");
+    } else {
+      askUserSuggested = true;
+      primaryTaskIntent = "unclear";
+      interactionIntent = "help";
+      reasonCodes.push("assess_vague_command");
+    }
   }
 
   // Anti-nag: simple + low risk → prefer assumptions over ask (DP still clamps).
@@ -82,9 +120,11 @@ export function assessDirection(
     !askUserSuggested &&
     difficulty === "simple" &&
     risk === "low" &&
-    input.turnKind !== "new"
+    continuation
   ) {
-    assumptionsMade.push("continue_turn_assume_prior_context");
+    if (!assumptionsMade.includes("continue_turn_assume_prior_context")) {
+      assumptionsMade.push("continue_turn_assume_prior_context");
+    }
   }
 
   const focus = input.situationSummary.focusPaths;

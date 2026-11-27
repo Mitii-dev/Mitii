@@ -1,6 +1,9 @@
 import { RuntimePipeline } from "../../flow/Pipeline";
 import type { RuntimeDependencies } from "../../ports/RuntimeDependencies";
-import type { LlmPort } from "../../../modules/model-gateway";
+import type {
+  LlmPort,
+  ModelToolDefinition,
+} from "../../../modules/model-gateway";
 import type { ToolRuntimePipeline } from "../../../engine/tool-runtime";
 import { InMemoryRuntimeSessionStore } from "../../helpers/checkpoint/InMemoryRuntimeSessionStore";
 import type { RuntimeSessionStorePort } from "../../helpers/checkpoint/RuntimeSessionCarry";
@@ -17,6 +20,8 @@ export type ComposeRuntimeOptions = {
   /** Optional model — LlmPort is adapted, or pass RuntimeModelPort via `model`. */
   runLlm?: LlmPort;
   model?: RuntimeDependencies["model"];
+  /** Schemas for grant-surface tool names (passed into completeViaLlmPort). */
+  toolDefinitions?: readonly ModelToolDefinition[];
   /** Pre-built tool executor, or pass `toolRuntime` + `workspaceRoot` to adapt. */
   tools?: RuntimeToolExecutorPort;
   toolRuntime?: ToolRuntimePipeline;
@@ -105,7 +110,11 @@ export function composeRuntime(
   const deps: RuntimeDependencies = {
     model:
       options.model ??
-      (options.runLlm ? completeViaLlmPort(options.runLlm) : undefined),
+      (options.runLlm
+        ? completeViaLlmPort(options.runLlm, {
+            toolDefinitions: options.toolDefinitions,
+          })
+        : undefined),
     tools,
     wallTimeSoftMs: options.wallTimeSoftMs,
     heartbeatIntervalMs: options.heartbeatIntervalMs,

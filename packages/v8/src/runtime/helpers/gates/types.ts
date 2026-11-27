@@ -72,6 +72,8 @@ export interface GateCheckpointStorePort {
   save(checkpoint: RuntimeGateCheckpoint): Promise<void>;
   /** Optional hydrate for resume — thin until StoreManager owns full restore. */
   load?(runId: string): Promise<RuntimeGateCheckpoint | undefined>;
+  /** Drop a settled/denied suspend checkpoint so resume cannot replay it. */
+  delete?(runId: string): Promise<void>;
 }
 
 /** Internal non-user checkpoint kinds (S11-HEART). */

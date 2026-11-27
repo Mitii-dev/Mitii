@@ -13,6 +13,48 @@ import {
   toModelToolSurface,
 } from "../../tools";
 import { runThroughTurnLoop } from "../../flow/RunThroughTurnLoop";
+import { defaultGrantFromDecision } from "../../flow/steps/10-TurnLoop";
+import type { RuntimeDecisionSketch } from "../../flow/steps/5-Decide";
+
+describe("defaultGrantFromDecision", () => {
+  it("prefers plate-compiled toolGrant over stub profiles", () => {
+    const decision = {
+      grantProfile: "research",
+      toolGrant: {
+        maximumWorkspaceEffect: "read",
+        allowedTools: [
+          "read_file",
+          "glob_files",
+          "list_directory",
+          "search_files",
+        ],
+        allowedEffects: ["workspace_read"],
+        pathScopes: ["."],
+        approvalMode: "never",
+        limits: {
+          maxToolCalls: 24,
+          maxWallTimeMs: 90_000,
+          maxOutputBytes: 256_000,
+        },
+      },
+    } as RuntimeDecisionSketch;
+
+    const grant = defaultGrantFromDecision(decision);
+    expect(grant.allowedTools).toEqual(
+      expect.arrayContaining(["glob_files", "list_directory", "search_files"]),
+    );
+    expect(grant.pathScopes).toEqual(["."]);
+  });
+
+  it("falls back to discovery tools for research when toolGrant missing", () => {
+    const grant = defaultGrantFromDecision({
+      grantProfile: "research",
+    } as RuntimeDecisionSketch);
+    expect(grant.allowedTools).toEqual(
+      expect.arrayContaining(["glob_files", "list_directory", "read_file"]),
+    );
+  });
+});
 
 describe("prompt ⊆ grant", () => {
   it("packTurn tools never exceed allowedTools", () => {

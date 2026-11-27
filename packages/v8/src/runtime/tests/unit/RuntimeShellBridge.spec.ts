@@ -31,6 +31,37 @@ describe("runtime shell bridge", () => {
     expect(result.reasonCodes).toContain("clarification_suspended");
   });
 
+  it("attaches pendingApproval onto suspension for mutation gates", async () => {
+    const handle = createAgentRunHandleFromRuntimeResult({
+      schemaVersion: 1,
+      runId: "bridge-appr",
+      status: "suspended",
+      route: "execute",
+      gateKind: "mutation_approval_required",
+      pendingApproval: {
+        approvalId: "appr_inv_1",
+        fingerprint: "fp_delete",
+        toolName: "delete_file",
+        callId: "inv_1",
+        paths: ["tsconfig.json"],
+        arguments: { path: "tsconfig.json" },
+        summary: "path=tsconfig.json",
+      },
+      reasonCodes: ["runtime_start_mutation_gate"],
+    });
+    const result = await handle.result;
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("approval_required");
+    expect(result.suspension?.approval).toMatchObject({
+      approvalId: "appr_inv_1",
+      toolName: "delete_file",
+      callId: "inv_1",
+      paths: ["tsconfig.json"],
+    });
+    expect(result.suspension?.rationale).toMatch(/delete_file/);
+    expect(result.suspension?.rationale).toMatch(/tsconfig\.json/);
+  });
+
   it("adaptEngineResumeToRuntime maps approval to mutation target", () => {
     const adapted = adaptEngineResumeToRuntime({
       input: {

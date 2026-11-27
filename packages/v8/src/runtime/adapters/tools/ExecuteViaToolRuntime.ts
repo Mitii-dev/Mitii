@@ -26,16 +26,28 @@ export function executeViaToolRuntime(params: {
       if (!check.ok) {
         return { ok: false, reasonCode: check.reason ?? "tool_not_allowed" };
       }
-      if (needsMutationApproval({ effect, grant: input.grant })) {
+      if (
+        needsMutationApproval({
+          effect,
+          grant: input.grant,
+          toolId: input.toolId,
+        })
+      ) {
         return { ok: false, reasonCode: "approval_required" };
       }
 
+      // Turn-loop hub is the approval authority — do not double-gate in
+      // ToolRuntime when the hub already cleared this call.
+      const grant = {
+        ...grantSurfaceToToolGrant(input.grant),
+        approvalMode: "never" as const,
+      };
       const result = await pipeline.execute({
         schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
         callId: input.invocationId,
         toolName: input.toolId,
         arguments: input.args ?? {},
-        grant: grantSurfaceToToolGrant(input.grant),
+        grant,
         workspaceRoot,
       });
 

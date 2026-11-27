@@ -5,7 +5,9 @@ export type RuntimeBridgeSkipPhase =
   | "decided"
   | "context_ready"
   | "prompt_ready"
-  | "verifying";
+  | "verifying"
+  | "model"
+  | "tools";
 
 /** Build a host-facing RunEvent sequence from a finished RuntimeRunResult. */
 export function buildRuntimeBridgeEvents(params: {
@@ -17,6 +19,15 @@ export function buildRuntimeBridgeEvents(params: {
 }): RunEvent[] {
   const { runtime, result, at } = params;
   const skip = new Set(params.skipPhases ?? []);
+  const codes = new Set(runtime.reasonCodes ?? []);
+  // Only suppress the late content paste when deltas actually streamed.
+  // model_turn alone (buffered providers) must still get a content paste.
+  const skipContentPaste =
+    skip.has("model") || codes.has("runtime_live_content_deltas");
+  const skipModelTurn =
+    skip.has("model") || codes.has("runtime_live_model_events");
+  const skipTools =
+    skip.has("tools") || codes.has("runtime_live_tool_events");
   const runId = runtime.runId;
   const events: RunEvent[] = [];
 
@@ -92,35 +103,66 @@ export function buildRuntimeBridgeEvents(params: {
             runtime.grantProfile === "readonly"
           ? "read"
           : "none";
+    const approvalFromCodes = [...codes]
+      .find((c) => c.startsWith("grant_approval_"))
+      ?.slice("grant_approval_".length);
     const approval =
-      runtime.grantProfile === "agent_execute" ? "every_mutation" : "never";
+      approvalFromCodes === "never" ||
+      approvalFromCodes === "when_required" ||
+      approvalFromCodes === "every_mutation"
+        ? approvalFromCodes
+        : runtime.grantProfile === "agent_execute"
+          ? "when_required"
+          : "never";
     events.push({
       type: "grant_narrowed",
       runId,
       maximumWorkspaceEffect: effect,
       approvalMode: approval,
       pathScopes: [],
-      reasonCodes: [`grant_${runtime.grantProfile}`],
+      reasonCodes: [
+        `grant_${runtime.grantProfile}`,
+        `grant_approval_${approval}`,
+      ],
       at,
     });
   }
 
-  for (const tool of runtime.toolInvocations ?? []) {
-    events.push({
-      type: "tool_started",
-      runId,
-      callId: tool.invocationId,
-      toolName: tool.toolId,
-      at,
-    });
-    events.push({
-      type: "tool_completed",
-      runId,
-      callId: tool.invocationId,
-      toolName: tool.toolId,
-      status: tool.status,
-      at,
-    });
+  if (!skipTools) {
+    for (const tool of runtime.toolInvocations ?? []) {
+      const summary =
+        typeof tool.summary === "string" && tool.summary.trim().length > 0
+          ? tool.summary.trim().slice(0, 500)
+          : undefined;
+      const reasonCode =
+        typeof tool.reasonCode === "string" && tool.reasonCode.trim().length > 0
+          ? tool.reasonCode.trim().slice(0, 80)
+          : undefined;
+      const outputPreview =
+        typeof tool.outputPreview === "string" &&
+        tool.outputPreview.trim().length > 0
+          ? tool.outputPreview.trim().slice(0, 1_000)
+          : undefined;
+      events.push({
+        type: "tool_started",
+        runId,
+        callId: tool.invocationId,
+        toolName: tool.toolId,
+        ...(summary ? { summary } : {}),
+        at,
+      });
+      events.push({
+        type: "tool_completed",
+        runId,
+        callId: tool.invocationId,
+        toolName: tool.toolId,
+        status: tool.status,
+        ...(summary ? { summary } : {}),
+        ...(reasonCode ? { reasonCode } : {}),
+        ...(outputPreview ? { outputPreview } : {}),
+        at,
+      });
+    }
   }
 
   const heartbeats = runtime.usage?.heartbeats ?? 0;
@@ -136,7 +178,7 @@ export function buildRuntimeBridgeEvents(params: {
   }
 
   const answer = runtime.answer?.trim();
-  if (answer && result.status === "completed") {
+  if (answer && result.status === "completed" && !skipContentPaste) {
     events.push({
       type: "model_delta",
       runId,
@@ -144,11 +186,25 @@ export function buildRuntimeBridgeEvents(params: {
       preview: answer.slice(0, 500),
       at,
     });
+  }
+  if (answer && result.status === "completed" && !skipModelTurn) {
     events.push({
       type: "model_turn",
       runId,
-      turnIndex: 0,
+      turnIndex: Math.max(0, (runtime.usage?.modelCalls ?? 1) - 1),
       finishReason: "stop",
+      ...(typeof runtime.usage?.inputTokens === "number"
+        ? { inputTokens: runtime.usage.inputTokens }
+        : {}),
+      ...(typeof runtime.usage?.outputTokens === "number"
+        ? { outputTokens: runtime.usage.outputTokens }
+        : {}),
+      ...(typeof runtime.usage?.cacheHitTokens === "number"
+        ? { cacheHitTokens: runtime.usage.cacheHitTokens }
+        : {}),
+      ...(typeof runtime.usage?.cacheMissTokens === "number"
+        ? { cacheMissTokens: runtime.usage.cacheMissTokens }
+        : {}),
       at,
     });
   }

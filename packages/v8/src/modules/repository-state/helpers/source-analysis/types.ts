@@ -19,6 +19,7 @@ export type {
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
 } from "../../ports/TreeSitterRuntimePort";
+export { SOURCE_REFERENCE_KINDS } from "../../ports/TreeSitterRuntimePort";
 
 /**
  * LANGUAGE DETECTION

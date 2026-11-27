@@ -42,6 +42,30 @@ export interface TurnLoopSketch {
   heartbeats?: number;
   /** Mid-turn hard gate — hub evaluateGates only (never a soft rail). */
   gate?: TurnLoopGateSketch;
+  /** Actual model.complete calls this loop (not stubbed to 0/1). */
+  modelCallCount?: number;
+  /** Outer turn-loop iterations that ran a model call. */
+  loopIterations?: number;
+  /** Aggregated provider token usage across model calls. */
+  usageTotals?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheHitTokens?: number;
+    cacheMissTokens?: number;
+  };
+  /** True when model_turn was pushed live to the event sink. */
+  liveModelEvents?: boolean;
+  /** True when content/reasoning model_delta chunks were pushed live. */
+  liveContentDeltas?: boolean;
+  /** True when tool_started / tool_completed were pushed live. */
+  liveToolEvents?: boolean;
+  /** Path/argv summaries keyed by invocation for usage/bridge sketches. */
+  toolSummaries?: Array<{
+    invocationId: string;
+    summary?: string;
+    reasonCode?: string;
+    outputPreview?: string;
+  }>;
 }
 
 /**
@@ -255,15 +279,45 @@ export function turnLoopShell(
   return sketch;
 }
 
+/**
+ * Prefer the plate-compiled toolGrant from Decide (full discovery surface).
+ * Fallback stubs are only for tests / missing decide sketches.
+ */
 export function defaultGrantFromDecision(
   decision: RuntimeDecisionSketch | undefined,
 ): GrantSurface {
+  const compiled = decision?.toolGrant;
+  if (compiled && compiled.allowedTools.length > 0) {
+    return {
+      allowedTools: [...compiled.allowedTools],
+      maximumWorkspaceEffect: compiled.maximumWorkspaceEffect,
+      allowedEffects: [...compiled.allowedEffects],
+      approvalMode: compiled.approvalMode,
+      pathScopes: [...(compiled.pathScopes ?? [])],
+      ...(compiled.scopes?.readPaths
+        ? { readPaths: [...compiled.scopes.readPaths] }
+        : {}),
+      ...(compiled.scopes?.writePaths
+        ? { writePaths: [...compiled.scopes.writePaths] }
+        : {}),
+    };
+  }
+
   if (decision?.grantProfile === "agent_execute") {
     return {
-      allowedTools: ["read_file", "apply_patch", "run_readonly_command"],
+      allowedTools: [
+        "read_file",
+        "read_many_files",
+        "search_files",
+        "glob_files",
+        "list_directory",
+        "directory_tree",
+        "apply_patch",
+        "run_readonly_command",
+      ],
       maximumWorkspaceEffect: "write",
       allowedEffects: ["workspace_write", "workspace_read"],
-      approvalMode: "every_mutation",
+      approvalMode: "when_required",
     };
   }
   if (
@@ -271,7 +325,15 @@ export function defaultGrantFromDecision(
     decision?.grantProfile === "readonly"
   ) {
     return {
-      allowedTools: ["read_file", "search_code", "run_readonly_command"],
+      allowedTools: [
+        "read_file",
+        "read_many_files",
+        "search_files",
+        "glob_files",
+        "list_directory",
+        "directory_tree",
+        "run_readonly_command",
+      ],
       maximumWorkspaceEffect: "read",
       allowedEffects: ["workspace_read"],
       approvalMode: "never",

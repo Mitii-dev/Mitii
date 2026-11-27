@@ -38,6 +38,12 @@ export async function executeRuntimeStart(
   const start = runtimeStartInputSchema.parse(input.start);
   const mode = input.mode ?? "agent";
   const sink = input.eventSink ?? input.deps?.eventSink;
+  const deps =
+    sink && input.deps
+      ? { ...input.deps, eventSink: sink }
+      : sink
+        ? { ...input.deps, eventSink: sink }
+        : input.deps;
   const progressAt = new Date().toISOString();
   const provisionalRunId = input.runId ?? start.runId ?? `run_${Date.now()}`;
   pushRuntimeProgressEvents(sink, {
@@ -50,33 +56,16 @@ export async function executeRuntimeStart(
     start,
     mode,
     runId: input.runId ?? start.runId,
-    deps: input.deps,
+    deps,
     hydrateSnapshot: input.hydrateSnapshot,
     abortSignal: input.abortSignal,
+    eventSink: sink,
   });
 
   const decision = through.decision as RuntimeDecisionSketch;
   const runId = through.store.getStore().runId;
-  pushRuntimeProgressEvents(sink, {
-    runId,
-    at: new Date().toISOString(),
-    phase: "decided",
-    route: decision.route,
-  });
-  if (through.contextBundle || through.store.getSlice("contextBundle")) {
-    pushRuntimeProgressEvents(sink, {
-      runId,
-      at: new Date().toISOString(),
-      phase: "context_ready",
-    });
-  }
-  if (through.turnLoop) {
-    pushRuntimeProgressEvents(sink, {
-      runId,
-      at: new Date().toISOString(),
-      phase: "prompt_ready",
-    });
-  }
+  // decided / context_ready / prompt_ready are emitted inside runThroughTurnLoop
+  // before the model turn loop so hosts see progress during provider waits.
   const usageSketch = buildRuntimeUsageSketch(through.turnLoop);
   const storeHydrated = through.hydratedFromSnapshot === true;
   const contextBundle = through.store.getSlice<ContextBundleSketch>(

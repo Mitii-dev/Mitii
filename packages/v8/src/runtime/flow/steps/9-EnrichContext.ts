@@ -138,6 +138,7 @@ export async function enrichContextWithRetrieval(
     contextWindowTokens:
       windowPolicy?.contextWindowTokens ?? ctx.input.contextWindowTokens,
     route: decision?.route,
+    repositoryContextRequired: decision?.repositoryContextRequired === true,
   });
   ctx.store.setSlice("orientDepth", depth);
 

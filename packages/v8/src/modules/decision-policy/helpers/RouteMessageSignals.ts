@@ -208,7 +208,7 @@ export function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
-    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build(?!\s+(?:logs?|errors?|output|failures?|status|artifacts?)\b)|create|design|develop|write|add|edit|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|change|generate|scaffold|install|upgrade)\b/i.test(
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+|you\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build(?!\s+(?:logs?|errors?|output|failures?|status|artifacts?)\b)|create|design|develop|write|add|edit|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|clear|discard|revert|unstage|clean(?:\s+up)?|update|modify|change|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||
     // Style / UX asks: "can you make it professional and elegant"
@@ -216,6 +216,11 @@ export function looksLikeAgentMutationRequest(message: string): boolean {
     looksLikeContinuationArtifactRequest(text) ||
     // Imperative docs/code edits: "Edit docs/foo.md only: …"
     /^(?:please\s+|can\s+you\s+|could\s+you\s+)?edit\b/i.test(text) ||
+    // Working-tree cleanup: "clear them all", "git clean/restore/checkout"
+    /\b(?:clear|discard|revert|unstage)\b[\s\S]{0,48}\b(?:changes?|diffs?|files?|tsconfigs?|untracked)\b/i.test(
+      text,
+    ) ||
+    /\bgit\s+(?:clean|restore|checkout|reset)\b/i.test(text) ||
     // Seeded bug fix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
     /\b(?:change|fix|update|set|switch|replace)\b[\s\S]{0,40}\bto\b/i.test(
       text,

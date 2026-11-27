@@ -82,6 +82,7 @@ describe("S11-LOOP / S11-CACHE-TOOL / S13-CHECKPOINT", () => {
     const result = await runThroughTurnLoop({
       start: {
         message: "refactor packages/v8/src/runtime helpers for clarity",
+        approvalMode: "every_mutation",
       },
       mode: "agent",
       runId: "loop-hub-1",

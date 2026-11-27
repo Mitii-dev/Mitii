@@ -69,6 +69,11 @@ export {
 export { assembleRuntimeParityFields } from "../helpers/parity/AssembleRuntimeParityFields";
 export { composeRuntime } from "../adapters/compose/ComposeRuntime";
 export type { ComposeRuntimeOptions } from "../adapters/compose/ComposeRuntime";
+export { buildRuntimeHostDeps } from "../adapters/compose/BuildRuntimeHostDeps";
+export type {
+  BuildRuntimeHostDepsInput,
+  RuntimeHostComposeSlice,
+} from "../adapters/compose/BuildRuntimeHostDeps";
 export {
   InMemoryRuntimeSessionStore,
   saveRuntimeSessionCarry,
@@ -98,6 +103,13 @@ export {
 } from "../adapters/bridge/CreateLiveAgentRunHandle";
 export { RuntimeEventChannel } from "../helpers/events/RuntimeEventChannel";
 export type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
+export {
+  pushRuntimeModelStreamEvent,
+  pushRuntimeModelTurnEvent,
+  pushRuntimeToolStartedEvent,
+  pushRuntimeToolCompletedEvent,
+  mergeRuntimeModelUsage,
+} from "../helpers/events/PushRuntimeModelEvents";
 export { createPipelineVerificationRunner } from "../adapters/verification/CreatePipelineVerificationRunner";
 export type { VerificationInputFactory } from "../adapters/verification/CreatePipelineVerificationRunner";
 export type {

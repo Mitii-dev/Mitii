@@ -48,7 +48,8 @@ describe("memory commit + verification runner", () => {
     });
     expect(shell.status).toBe("completed");
     expect(shell.memoryCommit).toBeDefined();
-    expect(shell.usage?.heartbeats).toBeGreaterThanOrEqual(1);
+    // Short ask runs finish under the default 45s interval — no heartbeat.
+    expect(shell.usage?.heartbeats ?? 0).toBe(0);
   });
 
   it("custom verification runner reason codes flow into result", async () => {

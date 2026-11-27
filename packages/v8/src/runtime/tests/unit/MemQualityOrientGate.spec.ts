@@ -30,6 +30,15 @@ describe("S11-MEM / S3A-QUALITY / S1-GATE", () => {
     );
   });
 
+  it("forces heavy enrich for repository_answer even in ask mode", () => {
+    const depth = resolveOrientDepth({
+      mode: "ask",
+      route: "repository_answer",
+    });
+    expect(depth.depth).toBe("heavy");
+    expect(depth.reasonCodes).toContain("orient_repo_required");
+  });
+
   it("enforcePlanQuality rejects vague change steps without targets", () => {
     const bad = enforcePlanQuality({
       objective: "Fix login",

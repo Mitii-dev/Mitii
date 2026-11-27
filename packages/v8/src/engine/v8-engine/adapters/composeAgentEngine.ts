@@ -9,6 +9,7 @@ import type {
 import type { V8EngineImplementation } from "../constants";
 import { composeRuntime, wrapEngineWithRuntimeShell } from "../../../runtime";
 import type { RuntimePipeline } from "../../../runtime";
+import { buildRuntimeHostDeps } from "../../../runtime/adapters/compose/BuildRuntimeHostDeps";
 import { composeV8Engine } from "./composeV8Engine";
 import type { ComposeV8EngineOptions } from "./composeV8Engine";
 import {
@@ -33,6 +34,8 @@ export type ComposeAgentEngineOptions = ComposeV8EngineOptions & {
   implementation?: V8EngineImplementation | "legacy";
   /** Absolute workspace root for runtime tool adapter (optional dual-run). */
   workspaceRoot?: string;
+  /** Host workspace id for memory scope + latest repository-state lookup. */
+  workspaceId?: string;
   /**
    * @deprecated Ignored — runtime shell is always the product `engine`.
    * Event-bus start/resume are sealed (hard-deleted on the composed surface).
@@ -63,10 +66,22 @@ export function composeAgentEngine(
   options: ComposeAgentEngineOptions,
 ): ComposedAgentEngine {
   const implementation = parseV8EngineImplementation(options.implementation);
+  const hostDeps = buildRuntimeHostDeps({
+    skillsCatalog: options.skillsCatalog,
+    memoryStore: options.memoryStore,
+    memoryEmbedding: options.memoryEmbedding,
+    repositoryContext: options.repositoryContext,
+    repositoryState: options.repositoryState,
+    verification: options.verification,
+    workspaceId: options.workspaceId,
+    workspaceRoot: options.workspaceRoot,
+  });
   const runtime = composeRuntime({
     runLlm: options.runLlm,
     toolRuntime: options.tools,
     workspaceRoot: options.workspaceRoot,
+    toolDefinitions: options.toolDefinitions,
+    ...hostDeps,
   });
   const rawEventBus = composeV8Engine(options);
   const engine = wrapEngineWithRuntimeShell(rawEventBus, runtime);

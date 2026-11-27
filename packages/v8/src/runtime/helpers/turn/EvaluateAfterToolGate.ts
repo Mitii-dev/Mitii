@@ -22,6 +22,7 @@ export function evaluateAfterToolGate(input: {
   route?: string;
   effect: ToolEffectClass;
   grant: GrantSurface;
+  toolId?: string;
   denyReason?: GrantDenyReason;
   enableExtendedGates?: boolean;
   /** External / network side-effect needing host OK. */
@@ -34,6 +35,7 @@ export function evaluateAfterToolGate(input: {
   const needsMut = needsMutationApproval({
     effect: input.effect,
     grant: input.grant,
+    toolId: input.toolId,
   });
 
   if (

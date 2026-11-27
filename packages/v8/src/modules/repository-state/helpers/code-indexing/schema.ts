@@ -167,6 +167,7 @@ const documentReferenceSchema = z
       "implements",
       "read",
       "write",
+      "reference",
       "unknown",
     ]),
     line:

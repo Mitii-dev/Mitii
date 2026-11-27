@@ -14,4 +14,8 @@ export class InMemoryGateCheckpointStore implements GateCheckpointStorePort {
   async load(runId: string): Promise<RuntimeGateCheckpoint | undefined> {
     return this.byRunId.get(runId);
   }
+
+  async delete(runId: string): Promise<void> {
+    this.byRunId.delete(runId);
+  }
 }

@@ -41,6 +41,8 @@ export interface HostStartLoose {
     maximumOutputTokens?: number;
     effort?: string;
   };
+  approvalMode?: "never" | "when_required" | "every_mutation";
+  explorationDepth?: "auto" | "quick" | "deep";
   focusedFile?: string;
   cwd?: string;
   selection?: RuntimeStartInput["host"] extends infer H
@@ -90,6 +92,49 @@ function digestConversation(
   };
 }
 
+function normalizeConversation(
+  conversation: Array<{ role?: string; content?: string }> | undefined,
+): RuntimeStartInput["conversation"] | undefined {
+  if (!conversation || conversation.length === 0) return undefined;
+  const normalized = conversation
+    .filter(
+      (m) =>
+        typeof m.content === "string" &&
+        m.content.length > 0 &&
+        (m.role === "user" ||
+          m.role === "assistant" ||
+          m.role === "system" ||
+          m.role === "tool"),
+    )
+    .map((m) => ({
+      role: m.role as "user" | "assistant" | "system" | "tool",
+      content: m.content as string,
+    }))
+    .slice(-200);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+/**
+ * When the host omits turnKind, treat multi-turn transcripts as follow_up so
+ * Decision Policy / AssessDirection keep prior-chat context.
+ */
+function inferTurnKind(params: {
+  explicit?: RuntimeStartInput["turnKind"];
+  conversation?: RuntimeStartInput["conversation"];
+  history?: RuntimeStartInput["history"];
+}): RuntimeStartInput["turnKind"] | undefined {
+  if (params.explicit) return params.explicit;
+  const conv = params.conversation ?? [];
+  const userTurns =
+    params.history?.compactedTurns ??
+    conv.filter((m) => m.role === "user").length;
+  const hasAssistant = conv.some((m) => m.role === "assistant");
+  if (userTurns > 1 || hasAssistant) {
+    return "follow_up";
+  }
+  return undefined;
+}
+
 /**
  * Map host/SDK/engine start bags → RuntimeStartInput (HOST wiring).
  */
@@ -129,9 +174,16 @@ export function adaptHostStartToRuntime(
       diagnostics.length > 0,
   );
 
+  const conversation = normalizeConversation(
+    input.request?.conversation ?? input.conversation,
+  );
   const history =
-    input.history ??
-    digestConversation(input.request?.conversation ?? input.conversation);
+    input.history ?? digestConversation(conversation ?? undefined);
+  const turnKind = inferTurnKind({
+    explicit: input.turnKind,
+    conversation,
+    history,
+  });
 
   const git = situation?.git ?? input.git;
   const memory = situation?.memory ?? input.memory;
@@ -155,6 +207,10 @@ export function adaptHostStartToRuntime(
   const start = runtimeStartInputSchema.parse({
     runId: input.runId,
     message: message.length > 0 ? message : "(empty)",
+    ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+    ...(input.explorationDepth
+      ? { explorationDepth: input.explorationDepth }
+      : {}),
     ...(contextWindowTokens ? { contextWindowTokens } : {}),
     ...(input.requiredSkillIds?.length
       ? { requiredSkillIds: input.requiredSkillIds }
@@ -184,7 +240,8 @@ export function adaptHostStartToRuntime(
     ...(impact ? { impact } : {}),
     ...(projectRuleIds.length > 0 ? { projectRuleIds } : {}),
     ...(userSafetyRuleIds.length > 0 ? { userSafetyRuleIds } : {}),
-    ...(input.turnKind ? { turnKind: input.turnKind } : {}),
+    ...(turnKind ? { turnKind } : {}),
+    ...(conversation ? { conversation } : {}),
   });
 
   return { ...start, mode };

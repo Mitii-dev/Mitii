@@ -1,5 +1,6 @@
 import { applyAntiNagAsk } from "../helpers/ApplyAntiNagAsk";
 import { mapPlanningHintToDepth } from "../helpers/MapPlanningHintToDepth";
+import { looksLikeAgentMutationRequest } from "../helpers/RouteMessageSignals";
 import { clarifyPlate } from "./routes/clarify";
 import { answerResearchPlate } from "./routes/answer";
 import { diagnosePlate } from "./routes/diagnose";
@@ -22,6 +23,8 @@ export interface SelectDecisionPlateInput {
   userQuestions?: readonly string[];
   clarificationQuestions?: readonly { blocking?: boolean }[];
   turnKind?: "new" | "continue" | "steer" | "follow_up" | "recover";
+  /** Raw user message — agent mutation safety net when ballot says question. */
+  message?: string;
 }
 
 /**
@@ -67,17 +70,28 @@ export function selectDecisionPlate(
   }
 
   if (intent === "question" || intent === "review") {
+    // Agent mode: ballot often labels imperative mutation asks as "question"
+    // ("Can you remove…?", "clear the tsconfig changes"). Mirror ResolveRoute's
+    // looksLikeAgentMutationRequest safety net so we do not seal to research.
+    if (
+      input.mode === "agent" &&
+      typeof input.message === "string" &&
+      looksLikeAgentMutationRequest(input.message)
+    ) {
+      return withNag(executeFastPathPlate, [
+        ...nag.reasonCodes,
+        "plate_agent_mutation_despite_question",
+      ]);
+    }
     return withNag(answerResearchPlate, nag.reasonCodes);
   }
 
+  // Ask mode is read-only Q&A — never seal to a visible plan plate.
   if (input.mode === "ask") {
-    if (input.planningHint !== "none") {
-      return withNag(
-        { ...planVisiblePlate, grantProfile: "research" },
-        nag.reasonCodes,
-      );
-    }
-    return withNag(answerResearchPlate, nag.reasonCodes);
+    return withNag(answerResearchPlate, [
+      ...nag.reasonCodes,
+      "plate_ask_mode_answer",
+    ]);
   }
 
   const depthFromHint = mapPlanningHintToDepth(input.planningHint);

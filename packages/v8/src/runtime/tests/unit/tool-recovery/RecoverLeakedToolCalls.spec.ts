@@ -50,4 +50,42 @@ describe("recoverLeakedToolCallsFromMarkup", () => {
       caseSensitive: false,
     });
   });
+
+  it("recovers JSON tool leaks from gpt-oss style text", () => {
+    const { toolCalls, warnings } = recoverLeakedToolCallsFromMarkup({
+      content: '{"tool":"list_directory","arguments":{"path":"."}}',
+      allowedToolNames: new Set(["list_directory", "read_file"]),
+    });
+    expect(warnings).toEqual([]);
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]?.name).toBe("list_directory");
+    expect(JSON.parse(toolCalls[0]?.arguments ?? "{}")).toEqual({ path: "." });
+  });
+
+  it("recovers nested JSON tool leaks embedded in prose", () => {
+    const { toolCalls } = recoverLeakedToolCallsFromMarkup({
+      content: `Tool calling failed. Try format:
+
+{
+  "name": "glob_files",
+  "arguments": {"pattern":"**/*"}
+}
+
+But we need to include path?`,
+      allowedToolNames: new Set(["glob_files", "list_directory"]),
+    });
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]?.name).toBe("glob_files");
+    expect(JSON.parse(toolCalls[0]?.arguments ?? "{}")).toEqual({
+      pattern: "**/*",
+    });
+  });
+
+  it("ignores JSON tool leaks outside the grant", () => {
+    const { toolCalls } = recoverLeakedToolCallsFromMarkup({
+      content: '{"tool":"list_directory","arguments":{"path":"."}}',
+      allowedToolNames: new Set(["read_file"]),
+    });
+    expect(toolCalls).toEqual([]);
+  });
 });

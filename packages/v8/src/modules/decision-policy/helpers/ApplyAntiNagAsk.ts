@@ -22,8 +22,16 @@ export interface AntiNagAskResult {
 export function applyAntiNagAsk(input: AntiNagAskInput): AntiNagAskResult {
   const reasonCodes: string[] = [];
 
-  // Vague / unclear primary always may clarify.
+  // Vague / unclear primary may clarify on a fresh turn. Continuation turns
+  // assume prior chat ("?", "go on") instead of nailing the user with clarify.
   if (input.primaryTaskIntent === "unclear") {
+    const turn = input.turnKind ?? "new";
+    if (turn === "continue" || turn === "steer" || turn === "follow_up") {
+      return {
+        askUser: false,
+        reasonCodes: ["anti_nag_continue_unclear_assume_prior"],
+      };
+    }
     return {
       askUser: true,
       reasonCodes: ["anti_nag_unclear_allows_ask"],

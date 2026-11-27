@@ -11,3 +11,4 @@ export type {
   TurnLoopHubGateKind,
 } from "./MapGateVerdictToTurnGate";
 export { settleToolCallWithCache } from "./SettleToolCallWithCache";
+export { settleApprovedMutationOnResume } from "./SettleApprovedMutationOnResume";

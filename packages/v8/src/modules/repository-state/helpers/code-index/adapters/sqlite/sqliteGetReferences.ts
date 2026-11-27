@@ -1,3 +1,7 @@
+import {
+  SOURCE_REFERENCE_KINDS,
+  type SourceReferenceKind,
+} from "../../../../ports/TreeSitterRuntimePort";
 import { SQLITE_CODE_INDEX_SQL } from "../../constants";
 
 import { throwIfCodeIndexAborted } from "../../CodeIndexError";
@@ -9,6 +13,16 @@ import type {
   CodeIndexReference,
   SqliteCodeIndexReferenceRow,
 } from "../../types";
+
+const KNOWN_REFERENCE_KINDS = new Set<string>(SOURCE_REFERENCE_KINDS);
+
+/** Map legacy / parser-emitted kinds onto the closed SourceReferenceKind set. */
+function coerceReferenceKind(raw: string): SourceReferenceKind {
+  if (KNOWN_REFERENCE_KINDS.has(raw)) {
+    return raw as SourceReferenceKind;
+  }
+  return "unknown";
+}
 
 import {
   createBatches,
@@ -136,7 +150,7 @@ export async function sqliteGetReferences(
           group = {
             fromFileId,
             symbolName: row.symbolName,
-            kind: row.kind,
+            kind: coerceReferenceKind(row.kind),
             ...optionalLine("line", row.line),
             candidates: new Map(),
           };

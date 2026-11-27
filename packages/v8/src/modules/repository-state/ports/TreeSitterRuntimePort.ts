@@ -7,15 +7,21 @@ export type SourceImportKind =
   | "reexport"
   | "unknown";
 
-export type SourceReferenceKind =
-  | "call"
-  | "construct"
-  | "type"
-  | "extends"
-  | "implements"
-  | "read"
-  | "write"
-  | "unknown";
+/** Closed set of reference kinds stored in the code index / SQLite. */
+export const SOURCE_REFERENCE_KINDS = [
+  "call",
+  "construct",
+  "type",
+  "extends",
+  "implements",
+  "read",
+  "write",
+  "reference",
+  "definition",
+  "unknown",
+] as const;
+
+export type SourceReferenceKind = (typeof SOURCE_REFERENCE_KINDS)[number];
 
 export interface TreeSitterRuntimeSymbol {
   name: string;

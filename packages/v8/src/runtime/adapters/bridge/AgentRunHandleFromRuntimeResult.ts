@@ -33,17 +33,37 @@ export function createAgentRunHandleFromRuntimeResult(
     answer:
       status === "completed"
         ? runtime.answer?.trim() ||
-          "Runtime shell completed (model answer via ports when composed)."
+          (runtime.reasonCodes.includes("runtime_model_empty_answer")
+            ? "Model returned an empty answer."
+            : undefined)
         : undefined,
     suspension:
       status === "suspended" && suspensionKind
         ? {
             kind: suspensionKind,
-            rationale: suspensionRationale(suspensionKind),
+            rationale: suspensionRationaleFor(suspensionKind, runtime),
             clarificationPrompt:
               suspensionKind === "clarification_required"
                 ? "Please clarify how to proceed."
                 : undefined,
+            ...(runtime.pendingApproval &&
+            (suspensionKind === "approval_required" ||
+              runtime.gateKind === "mutation_approval_required")
+              ? {
+                  approval: {
+                    approvalId: runtime.pendingApproval.approvalId,
+                    fingerprint: runtime.pendingApproval.fingerprint,
+                    toolName: runtime.pendingApproval.toolName,
+                    callId: runtime.pendingApproval.callId,
+                    ...(runtime.pendingApproval.paths?.length
+                      ? { paths: runtime.pendingApproval.paths }
+                      : {}),
+                    ...(runtime.pendingApproval.arguments !== undefined
+                      ? { arguments: runtime.pendingApproval.arguments }
+                      : {}),
+                  },
+                }
+              : {}),
           }
         : undefined,
     reasonCodes: [reasonCodeFor(status, suspensionKind)],
@@ -52,6 +72,18 @@ export function createAgentRunHandleFromRuntimeResult(
       modelCalls: runtime.usage?.modelCalls ?? 0,
       toolCalls: runtime.usage?.toolCalls ?? 0,
       loopIterations: runtime.usage?.loopIterations ?? 1,
+      ...(typeof runtime.usage?.inputTokens === "number"
+        ? { inputTokens: runtime.usage.inputTokens }
+        : {}),
+      ...(typeof runtime.usage?.outputTokens === "number"
+        ? { outputTokens: runtime.usage.outputTokens }
+        : {}),
+      ...(typeof runtime.usage?.cacheHitTokens === "number"
+        ? { cacheHitTokens: runtime.usage.cacheHitTokens }
+        : {}),
+      ...(typeof runtime.usage?.cacheMissTokens === "number"
+        ? { cacheMissTokens: runtime.usage.cacheMissTokens }
+        : {}),
     },
     durationMs: 0,
   };
@@ -141,9 +173,18 @@ function mapSuspensionKind(
   return "clarification_required";
 }
 
-function suspensionRationale(
+function suspensionRationaleFor(
   kind: NonNullable<AgentRunResult["suspension"]>["kind"],
+  runtime: RuntimeRunResult,
 ): string {
+  if (kind === "approval_required" && runtime.pendingApproval) {
+    const pending = runtime.pendingApproval;
+    const detail =
+      pending.summary ??
+      (pending.paths?.length ? pending.paths.join(", ") : undefined) ??
+      pending.toolName;
+    return `Approval required to run ${pending.toolName}${detail && detail !== pending.toolName ? ` (${detail})` : ""}.`;
+  }
   switch (kind) {
     case "approval_required":
       return "Runtime shell suspended for mutation approval.";

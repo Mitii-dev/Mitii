@@ -29,6 +29,50 @@ describe("selectDecisionPlate", () => {
     expect(plate.grantProfile).toBe("research");
   });
 
+  it("keeps pure how-to questions on research even in agent mode", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      message: "How do I remove untracked tsconfig files?",
+    });
+    expect(plate.id).toBe("answer_research");
+    expect(plate.grantProfile).toBe("research");
+  });
+
+  it("executes agent mutation asks misclassified as question", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "medium",
+      planningHint: "none",
+      askUser: false,
+      message:
+        "remove the latest changes which are not staged, which we did for tsconfigs",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.grantProfile).toBe("agent_execute");
+    expect(plate.reasonCodes).toContain(
+      "plate_agent_mutation_despite_question",
+    );
+  });
+
+  it("executes agent clear/git cleanup asks misclassified as question", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "medium",
+      planningHint: "none",
+      askUser: false,
+      message:
+        "there are some unwanted changes in my git\nclear them all are tsconfig changes",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.grantProfile).toBe("agent_execute");
+  });
+
   it("plan mode always picks plan plate", () => {
     const plate = selectDecisionPlate({
       mode: "plan",
@@ -39,5 +83,32 @@ describe("selectDecisionPlate", () => {
     });
     expect(plate.route).toBe("plan");
     expect(plate.planningDepth).toBe("visible");
+  });
+
+  it("ask mode seals to answer even when planningHint is set", () => {
+    const plate = selectDecisionPlate({
+      mode: "ask",
+      primaryTaskIntent: "feature",
+      clarityConfidence: "high",
+      planningHint: "short",
+      askUser: false,
+    });
+    expect(plate.id).toBe("answer_research");
+    expect(plate.route).toBe("answer");
+    expect(plate.reasonCodes).toContain("plate_ask_mode_answer");
+  });
+
+  it("does not clarify follow_up unclear nudges", () => {
+    const plate = selectDecisionPlate({
+      mode: "ask",
+      primaryTaskIntent: "unclear",
+      clarityConfidence: "low",
+      planningHint: "none",
+      askUser: true,
+      turnKind: "follow_up",
+      message: "?",
+    });
+    expect(plate.route).not.toBe("clarify");
+    expect(plate.id).toBe("answer_research");
   });
 });

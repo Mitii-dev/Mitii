@@ -45,6 +45,8 @@ export function wrapEngineWithRuntimeShell<T extends RuntimeShellEngineSurface>(
       requiredMcpServerIds: input.requiredMcpServerIds,
       workspaceRoot: input.workspaceRoot,
       windowBudget: input.windowBudget,
+      approvalMode: input.approvalMode,
+      explorationDepth: input.explorationDepth,
       runtimeSituation: input.runtimeSituation,
       instructions: input.instructions,
       userSafetyRules: input.userSafetyRules,

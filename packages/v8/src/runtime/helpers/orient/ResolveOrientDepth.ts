@@ -14,6 +14,8 @@ export interface ResolveOrientDepthInput {
   /** Host asks for deep gather. */
   forceHeavy?: boolean;
   route?: string;
+  /** When true, force heavy even in ask (repo context required). */
+  repositoryContextRequired?: boolean;
 }
 
 export interface ResolveOrientDepthResult {
@@ -47,6 +49,25 @@ export function resolveOrientDepth(
       maxMemory: 24,
       maxRepo: 24,
       reasonCodes: ["orient_depth_forced_heavy"],
+    };
+  }
+
+  // Ask repository / diagnose paths need enrich ports (event-bus parity).
+  if (
+    input.route === "repository_answer" ||
+    input.route === "diagnose" ||
+    input.repositoryContextRequired === true
+  ) {
+    return {
+      depth: "heavy",
+      maxSkills: 8,
+      maxMemory: 8,
+      maxRepo: 16,
+      reasonCodes: [
+        "orient_depth_heavy",
+        "orient_repo_required",
+        ...(input.route ? [`orient_route_${input.route}`] : []),
+      ],
     };
   }
 

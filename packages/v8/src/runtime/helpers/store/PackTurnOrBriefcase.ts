@@ -10,6 +10,26 @@ import type { GrantSurface } from "../../tools/CheckToolAgainstGrant";
 import { buildBriefcaseViaPC } from "./BuildBriefcaseViaPC";
 import { packTurn, type ModelRequestSketch } from "./PackTurn";
 
+function priorMessagesForPack(
+  conversation: Array<{ role: string; content: string }> | undefined,
+  currentMessage: string,
+): Array<{ role: string; content: string }> {
+  if (!conversation || conversation.length === 0) return [];
+  const prior = conversation.filter(
+    (m) =>
+      (m.role === "user" || m.role === "assistant" || m.role === "system") &&
+      m.content.trim().length > 0,
+  );
+  const last = prior[prior.length - 1];
+  if (
+    last?.role === "user" &&
+    last.content.trim() === currentMessage.trim()
+  ) {
+    return prior.slice(0, -1);
+  }
+  return prior;
+}
+
 export function packTurnOrBriefcase(input: {
   message: string;
   grant: GrantSurface;
@@ -19,7 +39,12 @@ export function packTurnOrBriefcase(input: {
   contextBundleSummary?: string;
   taskList?: TaskList;
   contextWindowTokens?: number;
+  conversation?: Array<{ role: string; content: string }>;
 }): ModelRequestSketch {
+  const priorMessages = priorMessagesForPack(
+    input.conversation,
+    input.message,
+  );
   if (input.promptConstruction && input.decision) {
     return buildBriefcaseViaPC({
       message: input.message,
@@ -29,10 +54,17 @@ export function packTurnOrBriefcase(input: {
       contextBundle: input.contextBundle,
       taskList: input.taskList,
       contextWindowTokens: input.contextWindowTokens,
+      ...(priorMessages.length > 0 ? { priorMessages } : {}),
     });
   }
   return packTurn({
-    messages: [{ role: "user", content: input.message }],
+    messages: [
+      ...priorMessages.map((m) => ({
+        role: m.role as "user" | "assistant" | "system",
+        content: m.content,
+      })),
+      { role: "user", content: input.message },
+    ],
     grant: input.grant,
     contextBundleSummary: input.contextBundleSummary,
     ...(input.contextBundle ? { contextBundle: input.contextBundle } : {}),

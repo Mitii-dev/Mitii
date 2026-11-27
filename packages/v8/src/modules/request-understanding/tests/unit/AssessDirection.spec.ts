@@ -47,4 +47,47 @@ describe("assessDirection", () => {
     expect(ballot.skillsAndMcp?.matchedSkillIds).toEqual(["s1"]);
     expect(ballot.reasonCodes).toContain("assess_direction_deterministic");
   });
+
+  it("treats remove/clear working-tree asks as mutation acts", () => {
+    const removeBallot = assessDirection({
+      schemaVersion: 1,
+      userCommand:
+        "remove the latest changes which are not staged, which we did for tsconfigs",
+      mode: "agent",
+    });
+    expect(removeBallot.primaryTaskIntent).toBe("refactor");
+    expect(removeBallot.interactionIntent).toBe("act");
+
+    const clearBallot = assessDirection({
+      schemaVersion: 1,
+      userCommand:
+        "there are some unwanted changes in my git\nclear them all are tsconfig changes",
+      mode: "agent",
+    });
+    expect(clearBallot.primaryTaskIntent).toBe("refactor");
+    expect(clearBallot.interactionIntent).toBe("act");
+  });
+
+  it("keeps explain-how-to as question despite add verb", () => {
+    const ballot = assessDirection({
+      schemaVersion: 1,
+      userCommand: "explain how to add new test case in this project",
+      mode: "ask",
+    });
+    expect(ballot.primaryTaskIntent).toBe("question");
+    expect(ballot.interactionIntent).toBe("question");
+    expect(ballot.planningHint).toBe("none");
+  });
+
+  it("treats follow_up ? as continuation nudge not unclear clarify", () => {
+    const ballot = assessDirection({
+      schemaVersion: 1,
+      userCommand: "?",
+      mode: "ask",
+      turnKind: "follow_up",
+    });
+    expect(ballot.primaryTaskIntent).toBe("question");
+    expect(ballot.askUserSuggested).toBe(false);
+    expect(ballot.reasonCodes).toContain("assess_continuation_nudge");
+  });
 });

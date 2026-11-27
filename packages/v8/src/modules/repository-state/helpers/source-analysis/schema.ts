@@ -139,6 +139,7 @@ export const sourceAnalysisReferenceSchema = z
       "implements",
       "read",
       "write",
+      "reference",
       "unknown",
     ]),
     line:

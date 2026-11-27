@@ -15,6 +15,21 @@ describe("applyAntiNagAsk", () => {
     expect(result.askUser).toBe(true);
   });
 
+  it("suppresses unclear clarify on follow_up turns", () => {
+    const result = applyAntiNagAsk({
+      askUserSuggested: true,
+      primaryTaskIntent: "unclear",
+      difficulty: "simple",
+      risk: "low",
+      clarityConfidence: "low",
+      turnKind: "follow_up",
+    });
+    expect(result.askUser).toBe(false);
+    expect(result.reasonCodes).toContain(
+      "anti_nag_continue_unclear_assume_prior",
+    );
+  });
+
   it("suppresses ask for simple low-risk clear tasks", () => {
     const result = applyAntiNagAsk({
       askUserSuggested: true,

@@ -5,6 +5,18 @@ export const runtimeStartInputSchema = z
   .object({
     runId: z.string().min(1).optional(),
     message: z.string().min(1),
+    /**
+     * Host approval preset (safe / guided / pilot → every_mutation /
+     * when_required / never). Applied onto the compiled tool grant.
+     */
+    approvalMode: z
+      .enum(["never", "when_required", "every_mutation"])
+      .optional(),
+    /**
+     * Host thoroughness (low / medium / high → quick / auto / deep).
+     * Influences turn-loop discovery budget.
+     */
+    explorationDepth: z.enum(["auto", "quick", "deep"]).optional(),
     /** Host-advertised window; discovery budgets must rise with this (§6.5). */
     contextWindowTokens: z.number().int().positive().optional(),
     /** Host MCP servers already attached before start. */
@@ -58,6 +70,21 @@ export const runtimeStartInputSchema = z
       .optional(),
     turnKind: z
       .enum(["new", "continue", "steer", "follow_up", "recover"])
+      .optional(),
+    /**
+     * Prior session transcript (host/SDK). Used for follow-up packing and
+     * turnKind inference — not a substitute for `message`.
+     */
+    conversation: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant", "system", "tool"]),
+            content: z.string(),
+          })
+          .strict(),
+      )
+      .max(200)
       .optional(),
     /** Project rule ids from host instructions (pins). */
     projectRuleIds: z.array(z.string().min(1)).max(32).optional(),

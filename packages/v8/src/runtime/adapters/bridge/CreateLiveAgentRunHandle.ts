@@ -14,6 +14,9 @@ const LIVE_SKIP: RuntimeBridgeSkipPhase[] = [
   "context_ready",
   "prompt_ready",
   "verifying",
+  // model/tools are skipped only when reasonCodes mark live emission
+  // (see BuildRuntimeBridgeEvents) — never unconditionally, or a buffered
+  // provider response leaves Desktop with no content deltas and a stuck UI.
 ];
 
 /**

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { SOURCE_REFERENCE_KINDS } from "../../ports/TreeSitterRuntimePort";
 import {
   CODE_INDEX_PATTERNS,
 } from "./constants";
@@ -141,16 +142,7 @@ export const codeIndexReferenceSchema = z
   .object({
     fromFileId: z.string().min(1),
     symbolName: z.string().min(1),
-    kind: z.enum([
-      "call",
-      "construct",
-      "type",
-      "extends",
-      "implements",
-      "read",
-      "write",
-      "unknown",
-    ]),
+    kind: z.enum(SOURCE_REFERENCE_KINDS),
     line:
       z.number().int().positive().optional(),
     resolution: z.enum([

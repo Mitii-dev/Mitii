@@ -23,6 +23,7 @@ import type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
 import { steerPlanArtifact } from "../helpers/plan";
 import type { PlanArtifact } from "../../modules/planning";
 import { applyReplateToSnapshot } from "../helpers/replate";
+import { settleApprovedMutationOnResume } from "../helpers/turn/SettleApprovedMutationOnResume";
 import type { RuntimeDependencies } from "../ports/RuntimeDependencies";
 import { executeRuntimeStart } from "./ExecuteRuntimeStart";
 
@@ -69,6 +70,25 @@ export async function executeRuntimeResume(
       resumeReenter: plan.reenter,
       reasonCodes: [
         ...(plan.reasonCodes ?? []),
+        "runtime_resume_terminal",
+      ],
+    });
+  }
+
+  // Mutation deny: stop — do not rediscover from the original prompt.
+  if (
+    decision === "reject" &&
+    (parsed.target === "mutation" || parsed.target === "destructive")
+  ) {
+    await input.deps?.checkpointStore?.delete?.(parsed.runId);
+    return runtimeRunResultSchema.parse({
+      schemaVersion: 1,
+      runId: parsed.runId,
+      status: "cancelled",
+      resumeReenter: plan.reenter,
+      reasonCodes: [
+        ...(plan.reasonCodes ?? []),
+        "runtime_resume_mutation_denied",
         "runtime_resume_terminal",
       ],
     });
@@ -145,6 +165,58 @@ export async function executeRuntimeResume(
         })
       : { reasonCodes: [] as string[] };
 
+  const settleCodes: string[] = [];
+  // Mutation approve: settle the pending tool, then continue the turn loop
+  // from saved messages — never restart discovery from the original prompt.
+  if (plan.replayTool) {
+    const settled = await settleApprovedMutationOnResume({
+      snapshot: hydrateSnapshot,
+      checkpointPayload: priorCheckpoint?.payload as
+        | Record<string, unknown>
+        | undefined,
+      tools: input.deps?.tools,
+    });
+    settleCodes.push(...settled.reasonCodes);
+    hydrateSnapshot = settled.snapshot;
+    await input.deps?.checkpointStore?.delete?.(parsed.runId);
+
+    if (!settled.settled) {
+      return runtimeRunResultSchema.parse({
+        schemaVersion: 1,
+        runId: parsed.runId,
+        status: "failed",
+        resumeReenter: plan.reenter,
+        reasonCodes: [
+          ...(plan.reasonCodes ?? []),
+          ...settleCodes,
+          ...(carry ? ["runtime_resume_from_session_carry"] : []),
+          ...(priorCheckpoint ? ["runtime_resume_from_gate_checkpoint"] : []),
+          "runtime_resume_mutation_settle_failed",
+        ],
+      });
+    }
+
+    if (!settled.canContinueLoop) {
+      return runtimeRunResultSchema.parse({
+        schemaVersion: 1,
+        runId: parsed.runId,
+        status: "completed",
+        answer: settled.toolId
+          ? `Applied ${settled.toolId}${settled.summary ? ` — ${settled.summary}` : ""}.`
+          : "Mutation applied.",
+        resumeReenter: plan.reenter,
+        reasonCodes: [
+          ...(plan.reasonCodes ?? []),
+          ...settleCodes,
+          ...(carry ? ["runtime_resume_from_session_carry"] : []),
+          ...(priorCheckpoint ? ["runtime_resume_from_gate_checkpoint"] : []),
+          "runtime_resume_mutation_settled_terminal",
+          "runtime_resume_completed",
+        ],
+      });
+    }
+  }
+
   const result = await executeRuntimeStart({
     start: {
       runId: parsed.runId,
@@ -174,6 +246,7 @@ export async function executeRuntimeResume(
       ...freshness.reasonCodes,
       ...replateCodes,
       ...steerCodes,
+      ...settleCodes,
       ...(carry ? ["runtime_resume_from_session_carry"] : []),
       ...(priorCheckpoint ? ["runtime_resume_from_gate_checkpoint"] : []),
       "runtime_resume_completed",

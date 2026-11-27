@@ -81,6 +81,7 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     userQuestions: assessment.userQuestions,
     clarificationQuestions: assessment.clarificationQuestions,
     turnKind: ctx.input.turnKind ?? "new",
+    message: pack?.request?.text ?? pack?.requestText ?? ctx.input.message,
   });
 
   // S2C: plate `answer` is the live wire route (legacy aliases shimmed elsewhere).
@@ -105,6 +106,9 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     mutationPathScopes: scopes.mutationPathScopes,
     protectedPathGlobs: scopes.scopes.protectedPaths,
     mcpServerIds: mcpIds,
+    ...(ctx.input.approvalMode
+      ? { approvalMode: ctx.input.approvalMode }
+      : {}),
   });
 
   const isExecute = wireRoute === "execute";

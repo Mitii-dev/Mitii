@@ -7,6 +7,10 @@ export const runtimeToolInvocationSketchSchema = z
     invocationId: z.string().min(1),
     toolId: z.string().min(1),
     status: z.enum(["succeeded", "failed", "pending"]),
+    /** Path/pattern/argv preview for bridge replay + logs. */
+    summary: z.string().min(1).max(500).optional(),
+    reasonCode: z.string().min(1).max(80).optional(),
+    outputPreview: z.string().max(1_000).optional(),
   })
   .strict();
 
@@ -16,6 +20,10 @@ export const runtimeUsageSketchSchema = z
     toolCalls: z.number().int().nonnegative(),
     loopIterations: z.number().int().nonnegative(),
     heartbeats: z.number().int().nonnegative().optional(),
+    inputTokens: z.number().int().nonnegative().optional(),
+    outputTokens: z.number().int().nonnegative().optional(),
+    cacheHitTokens: z.number().int().nonnegative().optional(),
+    cacheMissTokens: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -70,6 +78,19 @@ export const runtimePromptSketchSchema = z
   })
   .strict();
 
+/** Host-facing mutation approval bag (Desktop ApprovalCard / resume). */
+export const runtimePendingApprovalSchema = z
+  .object({
+    approvalId: z.string().min(1),
+    fingerprint: z.string().min(1),
+    toolName: z.string().min(1),
+    callId: z.string().min(1),
+    paths: z.array(z.string().min(1)).max(32).optional(),
+    arguments: z.unknown().optional(),
+    summary: z.string().min(1).max(500).optional(),
+  })
+  .strict();
+
 export const runtimeRunResultSchema = z
   .object({
     schemaVersion: z.literal(1),
@@ -85,6 +106,8 @@ export const runtimeRunResultSchema = z
     answer: z.string().optional(),
     usage: runtimeUsageSketchSchema.optional(),
     toolInvocations: z.array(runtimeToolInvocationSketchSchema).optional(),
+    /** Pending mutate tool awaiting host approve/deny. */
+    pendingApproval: runtimePendingApprovalSchema.optional(),
     /** Step 11 verify-finish sketch when the completed path ran (or skipped). */
     verify: runtimeVerifySketchSchema.optional(),
     /** Finish-time memory commit sketch (module owns durable write). */

@@ -6,6 +6,7 @@ import type { RuntimeDependencies } from "../../ports/RuntimeDependencies";
 import { buildPlanFingerprint } from "../build/CheckPlanFreshness";
 import { saveRuntimeGateCheckpoint } from "../checkpoint/SaveRuntimeGateCheckpoint";
 import { assembleFinishMemoryCommit } from "./AssembleFinishMemoryCommit";
+import { buildPendingApprovalFromStore } from "./BuildPendingApprovalFromStore";
 import type { RuntimeParityFields } from "./AssembleRuntimeParityFields";
 import type { RuntimeDecisionSketch } from "../../flow/steps/5-Decide";
 import type { VerifyFinishSketch } from "../../flow/steps/11-VerifyFinish";
@@ -119,6 +120,16 @@ export async function assembleRuntimeStartResult(input: {
 
   if (through.turnLoop?.gate?.status === "suspended") {
     const mutationGate = through.turnLoop.gate;
+    const pendingSlice = through.store.getSlice<{
+      toolId?: string;
+      invocationId?: string;
+      args?: unknown;
+    }>("pendingMutationApproval");
+    const pendingApproval = buildPendingApprovalFromStore({
+      pending: pendingSlice,
+      gateToolId: mutationGate.toolId,
+      gateInvocationId: mutationGate.invocationId,
+    });
     const checkpointSaved = await saveRuntimeGateCheckpoint(deps, {
       runId,
       requestId: start.runId ?? runId,
@@ -127,6 +138,13 @@ export async function assembleRuntimeStartResult(input: {
       payload: {
         toolId: mutationGate.toolId,
         invocationId: mutationGate.invocationId,
+        ...(pendingApproval
+          ? {
+              approvalId: pendingApproval.approvalId,
+              fingerprint: pendingApproval.fingerprint,
+              args: pendingApproval.arguments,
+            }
+          : {}),
       },
       storeSnapshot: through.store.snapshot(),
       liveStore: through.store,
@@ -144,6 +162,7 @@ export async function assembleRuntimeStartResult(input: {
       storeHydrated,
       usage: usageSketch.usage,
       toolInvocations: usageSketch.toolInvocations,
+      ...(pendingApproval ? { pendingApproval } : {}),
       mcpServerIds: parity.mcpServerIds,
       handoff: parity.handoff,
       context: parity.context,

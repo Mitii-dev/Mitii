@@ -6,6 +6,7 @@ const SUPPORTED_LEAKED_TOOL_TAGS = new Set([
   "search_files",
   "glob_files",
   "list_directory",
+  "directory_tree",
   "goto_definition",
   "find_type_definition",
   "find_references",
@@ -73,11 +74,12 @@ function parseAttributes(attrText: string): Record<string, unknown> {
 /**
  * Recover tool calls from leaked tool-call markup present in assistant text.
  *
- * This is intentionally conservative:
- * - Only parses a small set of known read/discovery tags.
- * - Only produces tool calls for tools present in the current grant.
- * - Produces best-effort JSON args from attributes; no attempt is made
- *   to parse nested bodies.
+ * Supports:
+ * - XML tags: `<list_directory path="." />`
+ * - JSON objects: `{"tool":"list_directory","arguments":{"path":"."}}`
+ *   (also `name` / `tool_name` / `toolName` and `args` / `parameters`)
+ *
+ * Conservative: only known discovery tools that are in the current grant.
  */
 export function recoverLeakedToolCallsFromMarkup(params: {
   content: string;
@@ -85,17 +87,45 @@ export function recoverLeakedToolCallsFromMarkup(params: {
 }): { toolCalls: ModelToolCall[]; warnings: string[] } {
   const { content, allowedToolNames } = params;
   const warnings: string[] = [];
-
-  // Example expected input (may be leaked into text):
-  //   <read_file path="src/util.ts" startLine="1" endLine="20">
-  //   <search_files query="foo" path="src" maxMatches="10" caseSensitive="false" />
-  //
-  // We parse only the opening tag attributes.
-  const tagRe = /<([A-Za-z_][A-Za-z0-9_-]*)\b([^>]*)>/g;
-
   const toolCalls: ModelToolCall[] = [];
   let index = 0;
 
+  index = recoverXmlTags(content, allowedToolNames, toolCalls, index);
+  if (toolCalls.length === 0) {
+    index = recoverJsonObjects(content, allowedToolNames, toolCalls, index);
+  }
+
+  if (
+    toolCalls.length === 0 &&
+    /<\s*(?:read_file|search_files|glob_files|list_directory|directory_tree|goto_definition|find_type_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)\b/i.test(
+      content,
+    )
+  ) {
+    warnings.push(
+      "Leaked tool-call markup was detected but no recoverable tool attributes were parsed.",
+    );
+  }
+
+  if (
+    toolCalls.length === 0 &&
+    /["'](?:tool|name|tool_name|toolName)["']\s*:/.test(content)
+  ) {
+    warnings.push(
+      "Leaked tool-call JSON was detected but no recoverable tool was parsed.",
+    );
+  }
+
+  return { toolCalls, warnings };
+}
+
+function recoverXmlTags(
+  content: string,
+  allowedToolNames: ReadonlySet<string>,
+  toolCalls: ModelToolCall[],
+  startIndex: number,
+): number {
+  const tagRe = /<([A-Za-z_][A-Za-z0-9_-]*)\b([^>]*)>/g;
+  let index = startIndex;
   let match: RegExpExecArray | null = null;
   // eslint-disable-next-line no-cond-assign
   while ((match = tagRe.exec(content)) !== null) {
@@ -110,26 +140,130 @@ export function recoverLeakedToolCallsFromMarkup(params: {
     }
 
     const argumentsValue = parseAttributes(attrText);
-    const argsJson = JSON.stringify(argumentsValue);
-
     toolCalls.push({
       id: `recovered_${index}`,
       name: tagName,
-      arguments: argsJson,
+      arguments: JSON.stringify(argumentsValue),
     });
     index += 1;
   }
+  return index;
+}
 
-  if (
-    toolCalls.length === 0 &&
-      /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_type_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)\b/i.test(
-      content,
-    )
-  ) {
-    warnings.push(
-      "Leaked tool-call markup was detected but no recoverable tool attributes were parsed.",
-    );
+function recoverJsonObjects(
+  content: string,
+  allowedToolNames: ReadonlySet<string>,
+  toolCalls: ModelToolCall[],
+  startIndex: number,
+): number {
+  let index = startIndex;
+  const trimmed = content.trim();
+
+  // Whole-message JSON object or array.
+  const candidates: unknown[] = [];
+  tryParseJsonInto(trimmed, candidates);
+
+  // Embedded JSON objects in prose — brace-balanced (nested arguments OK).
+  for (const raw of extractBalancedJsonObjects(content)) {
+    tryParseJsonInto(raw, candidates);
   }
 
-  return { toolCalls, warnings };
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const items = Array.isArray(candidate) ? candidate : [candidate];
+    for (const item of items) {
+      const recovered = coerceJsonToolCall(item, allowedToolNames, index);
+      if (!recovered) continue;
+      const key = `${recovered.name}:${recovered.arguments}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      toolCalls.push(recovered);
+      index += 1;
+    }
+  }
+  return index;
+}
+
+function tryParseJsonInto(raw: string, out: unknown[]): void {
+  try {
+    out.push(JSON.parse(raw) as unknown);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Extract top-level `{...}` slices with nested braces preserved. */
+function extractBalancedJsonObjects(content: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let j = i; j < content.length; j++) {
+      const ch = content[j];
+      if (inString) {
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escape = true;
+          continue;
+        }
+        if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") depth += 1;
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          out.push(content.slice(i, j + 1));
+          i = j;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function coerceJsonToolCall(
+  value: unknown,
+  allowedToolNames: ReadonlySet<string>,
+  index: number,
+): ModelToolCall | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const nameRaw =
+    record.tool ?? record.name ?? record.tool_name ?? record.toolName;
+  if (typeof nameRaw !== "string" || !nameRaw.trim()) return undefined;
+  const name = nameRaw.trim();
+  if (!SUPPORTED_LEAKED_TOOL_TAGS.has(name)) return undefined;
+  if (!allowedToolNames.has(name)) return undefined;
+
+  const argsRaw =
+    record.arguments ?? record.args ?? record.parameters ?? record.input ?? {};
+  let argsJson: string;
+  if (typeof argsRaw === "string") {
+    argsJson = argsRaw;
+  } else {
+    try {
+      argsJson = JSON.stringify(argsRaw ?? {});
+    } catch {
+      argsJson = "{}";
+    }
+  }
+
+  return {
+    id: `recovered_json_${index}`,
+    name,
+    arguments: argsJson,
+  };
 }
