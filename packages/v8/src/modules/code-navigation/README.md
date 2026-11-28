@@ -1,77 +1,46 @@
 # Code Navigation
 
-Read-only source navigation: definitions, references, hover, symbols,
-implementations, and call hierarchy.
+"Go to definition" for the agent: ask where a symbol lives, who uses it, or what it is.
 
-Hosts inject a `CodeNavigationPort`. This module validates input, caps results,
-and returns stable reason codes. It does not spawn language servers or own
-repository indexing.
+## Does
+- Resolves definitions, type definitions, references, hover, document / workspace symbols, implementations, and call hierarchy.
+- Delegates to an injected navigation port and applies result caps.
+- Ships a repo-graph adapter and a fallback adapter that can be chained behind a language-server port.
 
-## Facade
+## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-`CodeNavigationPipeline.navigate(input) → CodeNavigationResult`
+**Input:** `CodeNavigationInput` (`operation`, `query` with file / line / column / symbol name, `maximumLocations`).
+**Output:** `CodeNavigationResult` (status, locations or symbols, reason codes).
+**Pipeline:** `CodeNavigationPipeline` stages: `1-resolve-port` → `2-prepare-document` → `3-execute-operation` → `4-build-result`
+**Ports we offer / need:** needs `CodeNavigationPort` (`definition`, `references`, plus optional operations and capability reporting; provider is `language_server` or `repo_graph`). Adapters fulfill it (`GraphCodeNavigationAdapter`, `FallbackCodeNavigationAdapter`). Optional `ModuleLoggerPort`.
 
-| Operation | Typical tool alias |
-|---|---|
-| `definition` | `goto_definition` |
-| `type_definition` | `find_type_definition` |
-| `references` | `find_references` |
-| `hover` | `hover_symbol` |
-| `document_symbols` | `document_symbol` |
-| `workspace_symbols` | `workspace_symbol` |
-| `implementation` | `find_implementation` |
-| `call_hierarchy` | `call_hierarchy` |
+## Dependencies
+**Upstream (this module uses):** repository-state (graph and state types).
+**Downstream (who uses this):** the engine / tool-runtime (go-to-definition, references, and change-impact navigation enrichment).
 
-## Consumers
+## How to use
+```ts
+import { CodeNavigationPipeline } from "@mitii/v8/modules/code-navigation";
 
-- Tool Runtime — maps agent tools to `navigate`
-- Change Impact — may merge navigation hits when a graph walk is thin
-- Hosts — implement `CodeNavigationPort` (editor providers, language services, stdio, or repo graph)
-
-## Layout
-
-```text
-code-navigation/
-  pipeline/     CodeNavigationPipeline
-  adapters/     Graph + fallback ports
-  contracts/    input, output, port, errors
-  internal/     result builders, request limiter
-  tests/
-```
-
-## Contracts
-
-- **Input:** `schemaVersion`, `operation`, `query`, optional `maximumLocations`
-- **Query:** caret (`relativePath` + `line` + `column`), document path, or workspace symbol string
-- **Output:** `status` (`resolved` | `empty` | `unavailable`), `provider`, locations and/or hover, `truncated`, `warnings`, `reasonCodes`
-- **Capability:** hosts report `available` | `degraded` | `unavailable`
-
-## Notes
-
-- Graph `implementation` walks `implements` / `extends`; call hierarchy walks `calls`. Language-service ports are preferred when attached; graph is degraded fallback.
-- `FallbackCodeNavigationAdapter` tries the primary port, then the graph.
-- Defaults (`maximumLocations`, hover size, hop depth, request limit/timeout) are navigation caps — not model context-window policy.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/code-navigation
+const nav = new CodeNavigationPipeline({ navigation: hostPort });
+const result = await nav.navigate(input);
 ```
 
 ## Example
-
+Input:
 ```json
 {
   "schemaVersion": 1,
   "operation": "definition",
-  "query": {
-    "relativePath": "src/auth.ts",
-    "line": 4,
-    "column": 10,
-    "symbolName": "validateJwt"
-  },
+  "query": { "relativePath": "src/auth.ts", "line": 4, "column": 10, "symbolName": "validateJwt" },
   "maximumLocations": 40
 }
 ```
+Output (illustrative, abbreviated):
+```json
+{ "status": "ok", "locations": [{ "relativePath": "src/jwt.ts", "line": 12, "column": 17 }] }
+```
 
-Missing port or provider failure yields `unavailable` with stable reason codes — not a thrown soft miss.
+## Non-responsibilities
+Does not start language servers or own repository indexing.

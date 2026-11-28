@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { applySkillBudget } from "../../actions/ApplySkillBudget";
-import type { HydratedScoredSkill } from "../../actions/ApplySkillBudget";
+import { applySkillBudget } from "../../flow/steps/6-apply-budget";
+import type { HydratedScoredSkill } from "../../flow/steps/6-apply-budget";
 
 function scored(
   partial: Omit<HydratedScoredSkill, "reasons" | "score"> & {

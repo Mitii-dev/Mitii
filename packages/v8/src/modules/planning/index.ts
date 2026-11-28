@@ -7,6 +7,9 @@ export {
   PLAN_STRATEGIES,
   PLANNING_REASON_CODES,
   PLANNING_ERROR_CODES,
+  PLANNING_REASON,
+  PLANNING_STAGES,
+  PLANNING_MESSAGES,
 } from "./constants";
 
 export {
@@ -17,9 +20,9 @@ export {
   DEFAULT_MAX_OPEN_QUESTIONS,
 } from "./defaults";
 
-export { PLANNING_WORKING_SET_POLICY } from "./policy";
+export { PLANNING_WORKING_SET_POLICY } from "./rules";
 
-export { PlanningPipeline } from "./pipeline/PlanningPipeline";
+export { PlanningPipeline } from "./flow/PlanningPipeline";
 export {
   compileDiscoveryBrief,
   collectDiscoveryImpactSeedPaths,
@@ -29,17 +32,17 @@ export {
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
-} from "./pipeline/PlanningPipeline";
+} from "./flow/PlanningPipeline";
 export {
   draftClarifyFromDiscovery,
   buildFallbackClarifyDraft,
-} from "./actions/DraftClarifyFromDiscovery";
+} from "./adapters/llm";
 export {
   remapPathThroughScaffoldMapping,
   remapScaffoldChangeSurfaces,
   resolveScaffoldPackageMapping,
-} from "./actions/remapScaffoldChangeSurfaces";
-export type { PlanStrategyResolution } from "./pipeline/PlanningPipeline";
+} from "./helpers/remapScaffoldChangeSurfaces";
+export type { PlanStrategyResolution } from "./flow/PlanningPipeline";
 
 export {
   resolvePlanStrategy,
@@ -47,39 +50,39 @@ export {
   isRepairIntent,
   isArchitecturePlanningAsk,
   isMediumOrLargerTask,
-} from "./actions/ResolvePlanStrategy";
+} from "./helpers/ResolvePlanStrategy";
 
 export {
   changeLikePhaseName,
   isConcretePlanTargetRef,
   isConcretePlanVerification,
-} from "./internal/concretePlanTargets";
+} from "./helpers/concretePlanTargets";
 
-export { thinDiscoveryBriefForClarify } from "./thinDiscoveryBriefForClarify";
+export { thinDiscoveryBriefForClarify } from "./helpers/thinDiscoveryBriefForClarify";
 export {
   hasResolvedPlanScopeChoice,
   resolvePlanScopeId,
   collectCompletedPlanScopeIds,
   PLAN_SCOPE_DEFS,
   PLAN_SCOPE_ORDER,
-} from "./internal/planScopeChoice";
-export type { PlanScopeId, PlanScopeChoiceParams } from "./internal/planScopeChoice";
+} from "./helpers/planScopeChoice";
+export type { PlanScopeId, PlanScopeChoiceParams } from "./helpers/planScopeChoice";
 export {
   askNeedsPlanScopeFork,
-} from "./internal/askNeedsPlanScopeFork";
-export type { PlanScopeForkEvidence } from "./internal/askNeedsPlanScopeFork";
+} from "./helpers/askNeedsPlanScopeFork";
+export type { PlanScopeForkEvidence } from "./helpers/askNeedsPlanScopeFork";
 export {
   boundPreferredPathsForPlanScope,
   scorePathForPlanScope,
   planScopeDiscoveryHint,
   planScopeProcessHint,
   planScopeSearchQueries,
-} from "./internal/planScopeBounds";
+} from "./helpers/planScopeBounds";
 export {
   remainingPlanScopeIds,
   formatNextPlanPhaseOffer,
   appendNextPlanPhaseOffer,
-} from "./internal/planScopeCampaign";
+} from "./helpers/planScopeCampaign";
 
 export {
   planningInputSchema,
@@ -149,8 +152,12 @@ export type {
   PlanningErrorCode,
 } from "./contracts";
 
+export type { PlanningLlmPort } from "./ports/PlanningLlmPort";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+
 /** Bridge maps — understanding → planning evidence / impact. */
 export {
   mapUnderstandingToPlanningEvidence,
   collectPlanningImpactReports,
-} from "./actions";
+} from "./helpers";

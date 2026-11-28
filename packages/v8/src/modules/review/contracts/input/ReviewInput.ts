@@ -5,7 +5,7 @@ import {
   REVIEW_MODES,
   REVIEW_SCHEMA_VERSION,
 } from "../../constants";
-import { REVIEW_POLICY } from "../../policy";
+import { REVIEW_POLICY } from "../../rules";
 
 export const reviewModeSchema = z.enum(REVIEW_MODES);
 export const reviewEffortSchema = z.enum(REVIEW_EFFORTS);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toolGrantsEquivalent } from "../../actions/CompareToolGrants";
+import { toolGrantsEquivalent } from "../../helpers/CompareToolGrants";
 import type { ToolGrant } from "../../contracts";
 
 function grant(overrides: Partial<ToolGrant> = {}): ToolGrant {

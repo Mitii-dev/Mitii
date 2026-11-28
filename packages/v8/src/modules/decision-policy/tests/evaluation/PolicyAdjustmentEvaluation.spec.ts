@@ -79,6 +79,7 @@ describe("Policy adjustment evaluation", () => {
     const initial = pipeline.decide(input);
     const widened = pipeline.widen({
       previous: initial,
+      upgradePlateId: "upgrade_expand_write_paths",
       extraPaths: ["src/types/Button.ts"],
     });
 
@@ -107,6 +108,7 @@ describe("Policy adjustment evaluation", () => {
     const externalRoot = "/tmp/mitii-external-root";
     const widened = pipeline.widen({
       previous: initial,
+      upgradePlateId: "upgrade_expand_write_paths",
       extraAllowedRoots: [externalRoot],
     });
 
@@ -120,7 +122,7 @@ describe("Policy adjustment evaluation", () => {
     const input = createDecisionInput({
       mode: "agent",
       approvalMode: "never",
-      message: "Add scripts/lint.mjs and wire package.json lint script",
+      message: "Only edit under scripts — add scripts/lint.mjs",
       understanding: createUnderstanding({
         primaryTaskIntent: "feature",
         interactionIntent: "act",
@@ -138,6 +140,7 @@ describe("Policy adjustment evaluation", () => {
     expect(initial.toolGrant.maximumWorkspaceEffect).toBe("write");
     expect(initial.toolGrant.pathScopes).toEqual(["."]);
     expect(initial.toolGrant.mutationPathScopes).toEqual(["scripts"]);
+    expect(initial.toolGrant.scopes?.writePaths).toEqual(["scripts"]);
 
     const narrowed = pipeline.narrow({
       previous: initial,

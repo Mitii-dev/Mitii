@@ -5,8 +5,8 @@
  * Adapters remain the provider wire implementations.
  */
 
-export { ModelGatewayPipeline } from "./pipeline/ModelGatewayPipeline";
-export type { ModelGatewayPipelineDependencies } from "./pipeline/ModelGatewayPipeline";
+export { ModelGatewayPipeline } from "./flow/ModelGatewayPipeline";
+export type { ModelGatewayPipelineDependencies } from "./flow/ModelGatewayPipeline";
 
 export {
   MODEL_GATEWAY_IDS,
@@ -63,7 +63,7 @@ export type {
 export {
   ModelCapabilityResolver,
   resolveModelCapabilities,
-} from "./actions";
+} from "./flow/steps";
 
 export {
   EchoLlmPort,

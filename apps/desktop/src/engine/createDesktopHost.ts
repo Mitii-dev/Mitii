@@ -303,7 +303,6 @@ export async function createHostDesktopClient(
     semanticSourceRaw === 'bundled'
       ? semanticSourceRaw
       : ('bundled' as const);
-  const semanticEnabled = readDesktopSettingsField(env, 'semanticIndex.enabled');
   const semanticModel = readDesktopSettingsField(env, 'semanticIndex.model');
   const semanticDimensions = readDesktopSettingsField(
     env,
@@ -313,8 +312,11 @@ export async function createHostDesktopClient(
     env,
     'semanticIndex.normalized',
   );
+  // Source is authoritative with the Index settings UI (uncheck → source=disabled).
+  // Defaults historically left enabled=false with source=bundled, which skipped
+  // vectors while still writing a false "embedding error" into index-runtime.
   const semanticIndex: SemanticIndexSettings = {
-    enabled: semanticEnabled === true,
+    enabled: semanticSource !== 'disabled',
     source: semanticSource,
     model: typeof semanticModel === 'string' ? semanticModel : '',
     dimensions:

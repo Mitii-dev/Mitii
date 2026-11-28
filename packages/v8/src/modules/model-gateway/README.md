@@ -1,41 +1,42 @@
 # Model Gateway
 
-**Does:** provider-neutral LLM boundary — `ModelRequest` in, streaming `ModelEvent`s out — plus capability normalization. Adapters own OpenAI-compatible / Anthropic / Gemini / echo wire details. Does not build prompts, authorize tools, or run the agent loop.
+The universal plug for language models: one request shape in, one stream of events out, whatever the provider.
+
+## Does
+- Normalizes model capabilities (context window, tools support, output ceiling).
+- Streams a provider-neutral `ModelRequest` through an injected `LlmPort` as `ModelEvent`s.
+- Ships adapters for Echo (tests), Anthropic, Gemini, and OpenAI-compatible endpoints (OpenAI, Azure, Ollama, LM Studio, OpenRouter, DeepSeek, Grok/xAI, Groq, Mistral, Together, Fireworks).
 
 ## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-```text
-ResolveModelCapabilitiesInput  →  ModelGatewayPipeline.resolveCapabilities()  →  ModelCapabilities
+**Input:** `ResolveModelCapabilitiesInput` for capabilities; `LlmPort` + `ModelRequest` (messages, tools, limits) for completion.
+**Output:** `ModelCapabilities`; or an `AsyncIterable<ModelEvent>` (content / reasoning / tool-call deltas, usage, then `completed` | `failed` | `cancelled`).
+**Pipeline:** `ModelGatewayPipeline` stages: `1-resolve-capabilities` → `2-complete`
+**Ports we offer / need:** offers `LlmPort` (`complete`, `capabilities`); adapters (`EchoLlmPort`, `AnthropicLlmPort`, `GeminiLlmPort`, `OpenAiCompatibleLlmPort`) fulfill it. Optional `ModuleLoggerPort`.
 
-LlmPort + ModelRequest         →  ModelGatewayPipeline.complete()             →  AsyncIterable<ModelEvent>
+## Dependencies
+**Upstream (this module uses):** none.
+**Downstream (who uses this):** planning, prompt-construction, request-understanding, and the engine (model calls, composition).
+
+## How to use
+```ts
+import { ModelGatewayPipeline, EchoLlmPort } from "@mitii/v8/modules/model-gateway";
+
+const gateway = new ModelGatewayPipeline();
+const capabilities = gateway.resolveCapabilities({ modelId: "local/qwen", contextWindowTokens: 128_000, supportsTools: true });
+for await (const event of gateway.complete(new EchoLlmPort({ modelId: "echo/local" }), request)) { /* … */ }
 ```
-
-| Surface | Role |
-|---|---|
-| `LlmPort` | provider port (`complete`, `capabilities`) |
-| `ModelRequest` / `ModelMessage` / tools | request shape |
-| `ModelEvent` | content / reasoning / tool_call deltas, usage, completed / failed / cancelled |
-| Native adapters | Echo, Anthropic, Gemini |
-| OpenAI-compatible | OpenAI, Azure, Ollama, LM Studio, OpenRouter, DeepSeek, **Grok/xAI**, **Groq**, **Mistral**, **Together**, **Fireworks** |
-
-Cursor has **no** public chat-completions API — use Anthropic / OpenAI / Gemini / Grok (or Cursor Agent SDK outside this module).
 
 ## Example
-
-```ts
-const gateway = new ModelGatewayPipeline();
-
-const capabilities = gateway.resolveCapabilities({
-  modelId: "local/qwen",
-  contextWindowTokens: 128_000,
-  supportsTools: true,
-});
-// capabilities.maximumOutputTokens === 32_000  (25% default)
-
-const port = new EchoLlmPort({ modelId: "echo/local" });
-for await (const event of gateway.complete(port, {
-  messages: [{ role: "user", content: "Inspect LoginForm.tsx" }],
-})) {
-  // content_delta → … → completed | failed | cancelled
-}
+Input:
+```json
+{ "modelId": "local/qwen", "contextWindowTokens": 128000, "supportsTools": true }
 ```
+Output (illustrative, abbreviated):
+```json
+{ "modelId": "local/qwen", "contextWindowTokens": 128000, "supportsTools": true, "maximumOutputTokens": 32000 }
+```
+
+## Non-responsibilities
+Does not build prompts, authorize tools, or run the agent loop. Cursor has no public chat-completions API, so it is not a provider here.

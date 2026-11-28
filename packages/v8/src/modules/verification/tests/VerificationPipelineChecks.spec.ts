@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { InMemoryManifestReader } from "..";
-import { VerificationPipeline } from "../pipeline/VerificationPipeline";
+import { VerificationPipeline } from "../flow/VerificationPipeline";
 import { baseVerificationInput } from "./fixtures/grants";
 import { createTools, toolResult } from "./fixtures/pipelineTools";
 

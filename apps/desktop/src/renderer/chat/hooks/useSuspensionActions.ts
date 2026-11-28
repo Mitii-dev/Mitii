@@ -4,10 +4,17 @@ import { useEffect } from 'react';
 import type { useChatThreadState } from './useChatThreadState.js';
 import type { useRunResume } from './useRunResume.js';
 import type { useComposerState } from './useComposerState.js';
+import { resolvePlanApprovalAction } from '../resolvePlanApprovalAction.js';
 
 export function useSuspensionActions(deps: Pick<
     ReturnType<typeof useChatThreadState>,
-    'suspension' | 'busy' | 'setSuspension'
+    | 'suspension'
+    | 'busy'
+    | 'setSuspension'
+    | 'setPendingPlan'
+    | 'setPendingPlanStrategy'
+    | 'setPendingTaskList'
+    | 'setCompletedPlanStepIds'
   > &
   Pick<
     ReturnType<typeof useRunResume>,
@@ -15,21 +22,42 @@ export function useSuspensionActions(deps: Pick<
   > &
   Pick<
     ReturnType<typeof useComposerState>,
-    'approvalMode' | 'pendingAutoContinue' | 'setPendingAutoContinue'
+    | 'approvalMode'
+    | 'pendingAutoContinue'
+    | 'setPendingAutoContinue'
+    | 'mode'
+    | 'setMode'
   >) {
   const {
     suspension,
     busy,
     setSuspension,
+    setPendingPlan,
+    setPendingPlanStrategy,
+    setPendingTaskList,
+    setCompletedPlanStepIds,
     runResume,
     approvalMode,
     pendingAutoContinue,
     setPendingAutoContinue,
+    mode,
+    setMode,
   } = deps;
 
   const onApproveSuspension = () => {
     if (!suspension) return;
     if (suspension.kind === 'plan_approval_required') {
+      // Build → agent + approve. keep_plan_only is unused for the primary CTA;
+      // PendingPlanBanner still covers history-restored plans.
+      if (resolvePlanApprovalAction(mode) === 'keep_plan_only') {
+        setSuspension(null);
+        void runResume({
+          runId: suspension.runId,
+          planDecision: { decision: 'rejected' },
+        });
+        return;
+      }
+      setMode('agent');
       void runResume({
         runId: suspension.runId,
         planDecision: { decision: 'approved' },
@@ -57,6 +85,10 @@ export function useSuspensionActions(deps: Pick<
   const onDenySuspension = () => {
     if (!suspension) return;
     if (suspension.kind === 'plan_approval_required') {
+      setPendingPlan(null);
+      setPendingPlanStrategy(null);
+      setPendingTaskList(null);
+      setCompletedPlanStepIds(new Set());
       void runResume({
         runId: suspension.runId,
         planDecision: { decision: 'rejected' },

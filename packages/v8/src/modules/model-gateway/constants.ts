@@ -2,7 +2,7 @@ import type {
   ModelErrorCode,
   ModelReasoningEffort,
   ModelToolChoice,
-} from "./contracts/types";
+} from "./contracts";
 
 export const MODEL_GATEWAY_IDS = {
   CAPABILITY_RESOLVER:

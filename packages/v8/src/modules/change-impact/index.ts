@@ -10,8 +10,15 @@ export {
   CHANGE_IMPACT_RISK_TIERS,
   CHANGE_IMPACT_EDGE_TYPES,
   CHANGE_IMPACT_REASON_CODES,
+  CHANGE_IMPACT_REASON,
   CHANGE_IMPACT_ERROR_CODES,
   CHANGE_IMPACT_WARNING_CODES,
+  CHANGE_IMPACT_MESSAGES,
+  CHANGE_IMPACT_STAGES,
+} from "./constants";
+export type {
+  ChangeImpactReasonCodeConst,
+  ChangeImpactStageName,
 } from "./constants";
 
 export {
@@ -54,59 +61,42 @@ export {
   DEFAULT_CHANGE_IMPACT_MAX_PROPOSED_PATHS,
 } from "./defaults";
 
-export { CHANGE_IMPACT_POLICY } from "./policy";
+export { CHANGE_IMPACT_POLICY } from "./rules";
 
 export {
   compactChangeImpactForModelFacing,
   isChangeImpactToolOutput,
-} from "./actions/compactChangeImpactForModelFacing";
+  mergeNavigationEnrichment,
+  recommendWidenVerification,
+  isGraphConfidenceUnsafe,
+  mergeChangeImpactResults,
+  analyzeManyChangeImpact,
+  evaluateSpillover,
+  spilloverTokensFromResult,
+  planCheckChangeImpact,
+} from "./flow/steps";
 export type {
   ModelFacingAffectedNode,
   ModelFacingAffectedFile,
   ModelFacingPackage,
   ModelFacingChain,
   ModelFacingChainLink,
-} from "./actions/compactChangeImpactForModelFacing";
-
-export {
-  mergeNavigationEnrichment,
-} from "./actions/mergeNavigationEnrichment";
-export type { NavigationEnrichmentLocation } from "./actions/mergeNavigationEnrichment";
-
-export {
-  recommendWidenVerification,
-  isGraphConfidenceUnsafe,
-} from "./actions/recommendWidenVerification";
-
-export {
-  mergeChangeImpactResults,
-} from "./actions/mergeChangeImpactResults";
-export {
-  analyzeManyChangeImpact,
-} from "./actions/analyzeManyChangeImpact";
-export {
-  evaluateSpillover,
-  spilloverTokensFromResult,
-} from "./actions/evaluateSpillover";
-export {
-  planCheckChangeImpact,
-} from "./actions/planCheckChangeImpact";
+  NavigationEnrichmentLocation,
+} from "./flow/steps";
 
 export {
   classifyImpactBucket,
   bucketSortKey,
-} from "./internal/classifyImpactBucket";
-export type { ChangeImpactFileBucket as ImpactPathBucket } from "./internal/classifyImpactBucket";
+} from "./helpers/classifyImpactBucket";
+export type { ChangeImpactFileBucket as ImpactPathBucket } from "./helpers/classifyImpactBucket";
 
-export {
-  resolveSoftSymbolMatches,
-} from "./internal/resolveSoftSymbolMatches";
+export { resolveSoftSymbolMatches } from "./helpers/resolveSoftSymbolMatches";
 
-export {
-  collapseChainPrefixes,
-} from "./internal/collectBoundedChains";
+export { collapseChainPrefixes } from "./helpers/collectBoundedChains";
 
-export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
+export { ChangeImpactPipeline } from "./flow/ChangeImpactPipeline";
+export type { ChangeImpactPipelineDependencies } from "./flow/ChangeImpactPipeline";
+
 export {
   changeImpactInputSchema,
   changeImpactSeedSchema,
@@ -146,6 +136,7 @@ export {
   changeImpactPlanCheckResultSchema,
   ChangeImpactError,
   changeImpactErrorCodeSchema,
+  noopModuleLogger,
 } from "./contracts";
 export type {
   ChangeImpactInput,
@@ -175,4 +166,5 @@ export type {
   ChangeImpactMergedResult,
   ChangeImpactPlanCheckResult,
   RepositoryGraphPort,
+  ModuleLoggerPort,
 } from "./contracts";

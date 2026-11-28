@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import { WINDOW_BUDGET_REASON_CODES } from "../../constants";
-import { WINDOW_BUDGET_EFFORTS } from "../../policy/effort";
-import { WINDOW_BUDGET_MODES } from "../../policy/mode";
+import { WINDOW_BUDGET_EFFORTS } from "../../rules/effort";
+import { WINDOW_BUDGET_MODES } from "../../rules/mode";
 import { windowBudgetPolicySchema } from "../input/WindowBudgetInput";
 
 export const windowBudgetReasonCodeSchema = z.enum(WINDOW_BUDGET_REASON_CODES);

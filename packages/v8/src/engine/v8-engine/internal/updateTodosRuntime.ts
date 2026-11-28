@@ -115,6 +115,10 @@ export interface TaskListRef {
    * update, or auto-advance). Used for stale-update reminders.
    */
   lastUpdatedAtModelCall?: number;
+  /**
+   * S13-ENGINE — handoff notes from auto-advance / settle (runtime helpers).
+   */
+  handoffs?: import("../../../runtime/contracts/handoff/TaskHandoffNote").TaskHandoffNote[];
 }
 
 /** Record that the live checklist changed on this model-call watermark. */

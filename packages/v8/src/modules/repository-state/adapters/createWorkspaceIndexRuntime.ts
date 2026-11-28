@@ -1,46 +1,46 @@
 import {
   EmbeddingFactory,
-} from "../internal/embedding/EmbeddingFactory";
+} from "../helpers/embedding/EmbeddingFactory";
 import {
   SqliteEmbeddingVectorCache,
-} from "../internal/embedding/SqliteEmbeddingVectorCache";
+} from "../helpers/embedding/SqliteEmbeddingVectorCache";
 import type {
   EmbeddingFactoryOptions,
   EmbeddingProvider,
-} from "../internal/embedding/types";
+} from "../helpers/embedding/types";
 import type {
   FileSystemPort,
-} from "../internal/shared/filesystem/types";
+} from "../helpers/shared/filesystem/types";
 import type {
   SqliteTextIndexModule,
   TextIndexSqliteDatabasePort,
-} from "../internal/text-index/types";
+} from "../helpers/text-index/types";
 import type {
   SqliteCodeIndexDatabasePort,
-} from "../internal/code-indexing/types";
+} from "../helpers/code-indexing/types";
 import type {
   WorkspaceScanner,
-} from "../internal/workspace/WorkspaceScanner";
+} from "../helpers/workspace/WorkspaceScanner";
 import type {
   WorkspaceIgnorePolicyOptions,
-} from "../internal/workspace/types";
+} from "../helpers/workspace/types";
 import {
   LanceDbVectorIndexFactory,
-} from "../internal/vector-index/adapters/lancedb/LanceDbVectorIndexFactory";
+} from "../helpers/vector-index/adapters/lancedb/LanceDbVectorIndexFactory";
 import {
   VectorIndexFactory,
-} from "../internal/vector-index/VectorIndexFactory";
+} from "../helpers/vector-index/VectorIndexFactory";
 import type {
   LanceDbConnectionPort,
   LanceDbVectorIndexAdapterOptions,
   VectorIndexReadPort,
-} from "../internal/vector-index/types";
+} from "../helpers/vector-index/types";
 import type {
   WorkspaceIndexingFilePolicyPort,
-} from "../pipeline/ws-indexing-pipeline/types";
+} from "../flow/ws-indexing-pipeline/types";
 import type {
   WorkspaceIndexingPipeline,
-} from "../pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+} from "../flow/ws-indexing-pipeline/WorkspaceIndexingPipeline";
 import type {
   TreeSitterRuntimePort,
 } from "../contracts";

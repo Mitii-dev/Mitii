@@ -93,6 +93,8 @@ export const agentRunSuspensionSchema = z
     rationale: z.string().min(1),
     /** Short user-facing question — never the full composed host prompt. */
     clarificationPrompt: z.string().min(1).max(2_000).optional(),
+    /** Why clarification_required fired (hollow_plan, scope_fork, …). */
+    clarifyOrigin: z.string().min(1).max(64).optional(),
     clarificationOptions: z.array(clarificationOptionSchema).max(8).optional(),
     /** Structured plan awaiting approval/edit when kind is plan_approval_required. */
     plan: planArtifactSchema.optional(),
@@ -138,6 +140,29 @@ export const agentRunResultSchema = z
     planStrategy: planStrategyDecisionSchema.optional(),
     /** Compact live checklist. Absent in ask mode. Never auto-completed. */
     taskList: taskListSchema.optional(),
+    /** Plan/checklist progress for host PlanFollow navigation. */
+    progress: z
+      .object({
+        planCompletedCount: z.number().int().nonnegative(),
+        planTotalCount: z.number().int().nonnegative(),
+        doneCount: z.number().int().nonnegative(),
+        pendingCount: z.number().int().nonnegative(),
+        nextTitle: z.string().min(1).max(200).optional(),
+        nextDetail: z.string().min(1).max(500).optional(),
+        openTitles: z.array(z.string().min(1).max(200)).max(6).default([]),
+      })
+      .strict()
+      .optional(),
+    /** Durable notebook of finished plan step ids. */
+    completedPlanStepIds: z.array(z.string().min(1)).max(200).optional(),
+    /** Host CTA after a partial slice (no continue_required). */
+    nextAction: z
+      .object({
+        kind: z.enum(["continue_checklist", "next_campaign_scope"]),
+        prompt: z.string().min(1).max(500),
+      })
+      .strict()
+      .optional(),
     repoBuildStateBefore: repoBuildStateSchema.optional(),
     repoBuildStateAfter: repoBuildStateSchema.optional(),
     verificationRecord: verificationRecordSchema.optional(),

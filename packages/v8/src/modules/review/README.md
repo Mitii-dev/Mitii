@@ -1,51 +1,43 @@
 # Review
 
-Review produces a structured, evidence-backed review artifact (findings +
-severity + coverage) for a diff, commit range, workspace change set, or full
-file scan. It does **not** own mutation or post-mutation verification checks.
+The code reviewer's assistant: it prepares a review of changed code and cleans up the findings into trustworthy, anchored results.
 
-Third-party *inspiration* acknowledgement (not copied upstream source): see
-`NOTICE-REVIEW.md` (repo root).
+## Does
+- Previews and selects files from a diff, commit range, workspace change set, or full-file scan.
+- Groups files and resolves review rules (bundled and user-configured).
+- Repairs, anchors, and reflects raw findings, then builds a `ReviewRecord`.
+- Exports SARIF and persists / loads records.
 
-## What This Module Does
+## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-- Validates review input (workspace / range / commit / scan).
-- Deterministically selects reviewable files with exclude reasons.
-- Groups files for bounded concurrent review.
-- Resolves path-matched review rules (workspace → system → bundled).
-- Repairs, anchors, and optionally reflects model findings.
-- Builds a durable `ReviewRecord` and can export SARIF 2.1.0.
+**Input:** `ReviewInput` (mode, changed files with diffs, effort, filters, rules); `finalize` also takes the prep result and raw findings.
+**Output:** `ReviewPreview`, `ReviewPrepResult`, or `ReviewResult` (plus optional `ReviewRecord` / SARIF report).
+**Pipeline:** `ReviewPipeline` stages: `1-select-files` → `2-group-files` → `3-resolve-rules` (prepare); `4-repair-findings` → `5-anchor-findings` → `6-reflect-findings` → `7-build-record` (finalize); `8-export-sarif`, `9-format-prep`
+**Ports we offer / need:** offers `ReviewRecordStorePort` (optional), `ReviewLlmPort` (optional), and `ReviewDiffPort` (implemented by the host to list changed files); optional `ModuleLoggerPort`. Adapters fulfill the store (`InMemoryReviewRecordStore`, `FileReviewRecordStore`).
 
-## Structure
+## Dependencies
+**Upstream (this module uses):** none.
+**Downstream (who uses this):** the engine (review port, composition) and tool-runtime (emit-review-finding tool).
 
-```text
-review/
-  pipeline/                 ReviewPipeline (preview | prepare | finalize)
-  actions/                  Select, group, rules, anchor, repair, reflect, record, SARIF
-  contracts/                Input / output / errors / ports
-  adapters/                 In-memory and file record stores
-  bundled-rules/            Mitii-owned default path rules
-  internal/                 Path utils, scan batching
-  tests/
+## How to use
+```ts
+import { ReviewPipeline, InMemoryReviewRecordStore } from "@mitii/v8/modules/review";
+
+const pipeline = new ReviewPipeline({ records: new InMemoryReviewRecordStore() });
+const prep = pipeline.prepare(input);
+const result = await pipeline.finalize({ input, prep, rawFindings });
 ```
 
-## Ownership Boundaries
-
-Owns selection, grouping, rules resolution, finding post-process, review
-records, and SARIF export.
-
-Does not own git shelling, model tool loops, mutation, or verification
-`diff_review` evidence. Hosts inject `ReviewDiffPort` / LLM / store ports.
-
-## Public Facade
-
-- `preview(input)` — same selection as prepare; no LLM.
-- `prepare(input)` — selection + groups + rules (delegate-equivalent).
-- `finalize({ input, rawFindings | findings, prep? })` — anchor/repair/reflect/record.
-- `toSarif(result)` / `loadLatest(workspaceId)` / `persistRecord`.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/review
+## Example
+Input (illustrative, abbreviated):
+```json
+{ "mode": "workspace", "effort": "medium", "files": [{ "path": "src/auth.ts", "diff": "@@ … @@", "status": "modified" }] }
 ```
+Output (illustrative, abbreviated):
+```json
+{ "status": "ok", "findings": [{ "path": "src/auth.ts", "line": 12, "severity": "warning", "message": "…" }] }
+```
+
+## Non-responsibilities
+Does not run git, drive model tool loops, mutate files, or produce verification evidence.

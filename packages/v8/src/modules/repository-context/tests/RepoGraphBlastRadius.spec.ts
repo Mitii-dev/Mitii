@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   RepoGraphRetrievalSource,
-} from "../internal/hybrid-retrieval/sources";
+} from "../helpers/hybrid-retrieval/sources";
 
 import type {
   NormalizedHybridRetrievalRequest,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 
 import type {
   RepoGraph,

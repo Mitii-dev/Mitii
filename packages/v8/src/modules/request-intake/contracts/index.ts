@@ -33,5 +33,5 @@ export { agentModeSchema } from "../helpers/interaction-mode/schema";
 
 export {
   noopModuleLogger,
-} from "./ports/ModuleLoggerPort";
-export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+} from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

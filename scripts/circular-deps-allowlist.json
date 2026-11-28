@@ -25,13 +25,6 @@
     {
       "root": "packages/v8/src/modules",
       "cycle": [
-        "memory/actions/RetrieveMemory.ts",
-        "memory/internal/diversity.ts"
-      ]
-    },
-    {
-      "root": "packages/v8/src/modules",
-      "cycle": [
         "request-understanding/intent/constants.ts",
         "request-understanding/intent/types.ts"
       ]

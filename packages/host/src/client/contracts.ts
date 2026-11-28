@@ -4,6 +4,7 @@ import type {
   LlmPort,
   MitiiClient,
   MemoryStorePort,
+  ProcessPort,
   RepositoryStatePipeline,
   ModelToolDefinition,
   ToolRuntimePipeline,
@@ -14,7 +15,14 @@ import type {
 import { z } from 'zod';
 
 import type { SemanticIndexSettings } from '../indexing/semanticIndex.js';
-import type { SandboxBackendPrefer } from '../sandbox/createSandboxedProcessPort.js';
+import type {
+  SandboxBackendPrefer,
+  SandboxGrantScopesInput,
+  SandboxIsolationProfile,
+  SandboxLifecycleMode,
+  SandboxReadiness,
+  SandboxResources,
+} from '../sandbox/index.js';
 
 export const HOST_CLIENT_REASON_CODES = [
   'invalid_workspace_id',
@@ -35,15 +43,52 @@ export class HostClientOptionsError extends Error {
   }
 }
 
+export const hostSandboxGrantScopesSchema = z
+  .object({
+    readPaths: z.array(z.string().min(1)).optional(),
+    writePaths: z.array(z.string().min(1)).optional(),
+    protectedPaths: z.array(z.string().min(1)).optional(),
+    pathScopes: z.array(z.string().min(1)).optional(),
+    mutationPathScopes: z.array(z.string().min(1)).optional(),
+    protectedPathGlobs: z.array(z.string().min(1)).optional(),
+    extraAllowedRoots: z.array(z.string().min(1)).max(20).optional(),
+    networkHosts: z.array(z.string().min(1)).optional(),
+    allowedEffects: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 export const hostSandboxOptionsSchema = z.object({
   enabled: z.boolean().optional(),
   network: z.enum(['allow', 'deny']).optional(),
   prefer: z
     .enum(['auto', 'docker', 'podman', 'seatbelt', 'bubblewrap'])
     .optional(),
+  /** ephemeral = per-command wrap; session = long-lived container + exec. */
+  lifecycle: z.enum(['ephemeral', 'session']).optional(),
+  /** Distinguishes concurrent session containers for the same workspace. */
+  sessionKey: z.string().min(1).optional(),
+  isolationProfile: z.enum(['strict', 'balanced', 'permissive']).optional(),
+  writablePaths: z.array(z.string().min(1)).optional(),
+  readablePaths: z.array(z.string().min(1)).optional(),
+  denyReadPaths: z.array(z.string().min(1)).optional(),
+  resources: z
+    .object({
+      memory: z.string().min(1).optional(),
+      cpus: z.string().min(1).optional(),
+      pidsLimit: z.number().int().positive().optional(),
+    })
+    .strict()
+    .optional(),
+  scopes: hostSandboxGrantScopesSchema.optional(),
+  applyUserSafetyProtectedPaths: z.boolean().optional(),
+  applyDefaultDenyReadPaths: z.boolean().optional(),
 });
 export type HostSandboxOptions = z.infer<typeof hostSandboxOptionsSchema> & {
   prefer?: SandboxBackendPrefer | undefined;
+  lifecycle?: SandboxLifecycleMode | undefined;
+  isolationProfile?: SandboxIsolationProfile | undefined;
+  resources?: SandboxResources | undefined;
+  scopes?: SandboxGrantScopesInput | undefined;
 };
 
 /** Scalar subset of the options validated with Zod at the public entry. */
@@ -118,6 +163,14 @@ export interface CreateHostClientOptions {
   clientOptions?: Partial<CreateMitiiClientOptions>;
 }
 
+/** OS sandbox handle returned when a workspace process port is wired. */
+export interface HostClientSandboxHandle {
+  processPort: ProcessPort;
+  readiness: SandboxReadiness;
+  /** Destroy session containers; no-op for ephemeral wraps. */
+  dispose(): Promise<void>;
+}
+
 export interface HostClientComposition {
   client: MitiiClient;
   repositoryState: RepositoryStatePipeline;
@@ -127,4 +180,6 @@ export interface HostClientComposition {
   mcpToolDefinitions: readonly ModelToolDefinition[];
   memoryStore?: MemoryStorePort;
   memoryEmbedding?: CreateMitiiClientOptions['memoryEmbedding'];
+  /** Present when a workspace process port was created or injected. */
+  sandbox?: HostClientSandboxHandle;
 }

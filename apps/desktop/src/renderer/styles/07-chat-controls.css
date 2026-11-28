@@ -161,14 +161,14 @@
   opacity: 0.35;
 }
 
-/* Above the whole composer so the textarea stays visible while typing @ */
+/*
+ * In-flow inside the composer (not floated above). chat-view uses
+ * overflow:hidden, so an absolutely positioned upward menu gets clipped.
+ */
 .composer-suggest {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
+  position: relative;
   z-index: 80;
-  max-height: min(280px, 36vh);
+  max-height: min(240px, 32vh);
   overflow: auto;
   padding: 4px;
   border: 1px solid var(--mitii-border);

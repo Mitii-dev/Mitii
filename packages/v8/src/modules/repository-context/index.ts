@@ -1,4 +1,5 @@
-export { RepositoryContextPipeline } from "./pipeline/context-pipeline/RepositoryContextPipeline";
+export { RepositoryContextPipeline } from "./flow/RepositoryContextPipeline";
+export type { RepositoryContextPipelineOptions } from "./flow/RepositoryContextPipeline";
 export {
   ContextAssemblyFactory,
   ContextSelector,
@@ -21,7 +22,16 @@ export {
   pathMatchesFolderPrefix,
   restrictContextReferencesToFolderPrefix,
   REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
-} from "./policy";
+} from "./rules";
+export {
+  REPOSITORY_CONTEXT_PIPELINE_SCHEMA_VERSION,
+  REPOSITORY_CONTEXT_PIPELINE_IDS,
+  REPOSITORY_CONTEXT_PIPELINE_LIMITS,
+  REPOSITORY_CONTEXT_PIPELINE_MESSAGES,
+  REPOSITORY_CONTEXT_REASON,
+  REPOSITORY_CONTEXT_STAGES,
+} from "./constants";
+export type { RepositoryContextStageName } from "./constants";
 export type {
   ContextSelectionBudget,
   RepositoryContextPipelineInput,
@@ -33,7 +43,9 @@ export type {
   RepositoryContextStateResolverPort,
   RepositoryContextResolvedState,
   RepositoryContextStateResolveResult,
+  ModuleLoggerPort,
 } from "./contracts/types";
+export { noopModuleLogger } from "./contracts/types";
 export type {
   ContextAssemblyInput,
   ContextAssemblyResult,

@@ -9,7 +9,9 @@ import type {
   ModelCapabilities,
   ModelEvent,
   ModelRequest,
-} from "../contracts/types";
+} from "../contracts";
+import { echoComplete } from "./echo/complete";
+import { echoCountTokens } from "./echo/count-tokens";
 
 export interface EchoLlmPortOptions {
   id?: string;
@@ -20,7 +22,7 @@ export interface EchoLlmPortOptions {
 
 /**
  * Deterministic LlmPort for local tests and offline smoke runs.
- * Echoes the last user message; never contacts a network provider.
+ * Port method bodies: flat `impl/echo-*.ts` (same style as `flow/`).
  */
 export class EchoLlmPort implements LlmPort {
   public readonly id: string;
@@ -48,59 +50,14 @@ export class EchoLlmPort implements LlmPort {
     request: ModelRequest,
     context?: ModelCallContext,
   ): AsyncIterable<ModelEvent> {
-    if (context?.abortSignal?.aborted) {
-      yield {
-        type: "cancelled",
-        error: {
-          code: "cancelled",
-          message: "Request was aborted before completion.",
-          retryable: false,
-        },
-      };
-      return;
-    }
-
-    const lastUser = [...request.messages]
-      .reverse()
-      .find((message) => message.role === "user");
-
-    const response = `Echo: ${lastUser?.content ?? ""}`;
-
-    for (
-      let index = 0;
-      index < response.length;
-      index += this.chunkCharacters
-    ) {
-      if (context?.abortSignal?.aborted) {
-        yield {
-          type: "cancelled",
-          error: {
-            code: "cancelled",
-            message: "Request was aborted during streaming.",
-            retryable: false,
-          },
-        };
-        return;
-      }
-
-      yield {
-        type: "content_delta",
-        content: response.slice(index, index + this.chunkCharacters),
-      };
-    }
-
-    yield {
-      type: "completed",
-      finishReason: "stop",
-    };
+    yield* echoComplete({
+      request,
+      context,
+      chunkCharacters: this.chunkCharacters,
+    });
   }
 
   public async countTokens(text: string): Promise<number> {
-    return Math.max(
-      1,
-      Math.ceil(
-        text.length / MODEL_GATEWAY_LIMITS.APPROXIMATE_CHARS_PER_TOKEN,
-      ),
-    );
+    return echoCountTokens(text);
   }
 }

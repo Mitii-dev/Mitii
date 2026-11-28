@@ -11,6 +11,7 @@ import {
   expandRootAliases,
   matchDirectoryEntry,
   resolveContainedPath,
+  stripRedundantWorkspaceFolderPrefix,
 } from "../internal/PathContainment";
 
 /**
@@ -93,6 +94,26 @@ function createAliasedRootFileSystem(params: {
     mkdirp: notImplemented,
   };
 }
+
+describe("stripRedundantWorkspaceFolderPrefix", () => {
+  it("drops a leading workspace folder segment", () => {
+    expect(
+      stripRedundantWorkspaceFolderPrefix(
+        "wedding/priya-v1/new-design.html",
+        "/Users/me/workspace/wedding",
+      ),
+    ).toBe("priya-v1/new-design.html");
+  });
+
+  it("leaves unrelated prefixes alone", () => {
+    expect(
+      stripRedundantWorkspaceFolderPrefix(
+        "priya-v1/new-design.html",
+        "/Users/me/workspace/wedding",
+      ),
+    ).toBe("priya-v1/new-design.html");
+  });
+});
 
 describe("PathContainment.resolveContainedPath", () => {
   it("allows files when logical workspace root aliases to a different realpath", async () => {

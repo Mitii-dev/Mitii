@@ -4,7 +4,7 @@ import {
   CODE_NAVIGATION_OPERATIONS,
   CODE_NAVIGATION_SCHEMA_VERSION,
 } from "../../constants";
-import { CODE_NAVIGATION_POLICY } from "../../policy";
+import { CODE_NAVIGATION_POLICY } from "../../rules";
 
 export const codeNavigationOperationSchema = z.enum(
   CODE_NAVIGATION_OPERATIONS,

@@ -6,7 +6,7 @@ import {
   itemWriteTargetsMatchChangedFiles,
   taskItemPaths,
   taskPathsMatch,
-} from "../../actions/6-task-item-paths";
+} from "../../flow/steps/6-task-item-paths";
 import type { TaskList } from "../../contracts";
 
 describe("taskItemPaths", () => {

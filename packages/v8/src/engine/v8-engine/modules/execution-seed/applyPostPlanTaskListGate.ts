@@ -20,6 +20,12 @@ import {
   isExecutionSeedTrusted,
   type ExecutionSeed,
 } from "./resolve";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../../helpers/ConsultRuntimeGate";
+import { saveSuspendedRun } from "../../helpers/SaveSuspendedRun";
+import { toStoreSuspensionKind } from "../../helpers/ToStoreSuspensionKind";
 import type { AgentEngineRuntime } from "../../pipeline/runtime";
 import type { ExecuteStartSharedState } from "../../pipeline/executeStartEarlyPipeline";
 
@@ -134,36 +140,54 @@ export async function applyPostPlanTaskListGate(params: {
   }
 
   reasonCodes.push("task_list_plan_not_concrete");
+
+  // S10-EVAC: hollow plan suspend decision owned by gates hub.
+  // This branch only runs after `mode === "agent"` narrows above.
+  const gateVerdict = consultRuntimeGate("after_plan", {
+    runId,
+    mode: "agent",
+    hollowPlan: true,
+  });
+  const suspendKind = toStoreSuspensionKind(
+    hubSuspendKind(gateVerdict, "clarification_required"),
+  );
+  if (gateVerdict?.action === "suspend") {
+    warnings.push("gates_hub:hollow_plan");
+  }
+
   const rationale =
     "Plan did not yield a concrete file-scoped task list after bounded seed recovery. Clarify the change surface or replan before execute.";
   warnings.push(rationale);
   if (runtime.deps.checkpointStore) {
-    await runtime.deps.checkpointStore.save({
-      runId,
-      requestId: shared.requestId,
-      suspensionKind: "clarification_required",
-      input,
-      decision,
-      pinnedState: undefined,
-      messages: [],
-      toolCacheEntries: [],
-      pendingApproval: undefined,
-      plan: ensured.plan,
-      ...(planStrategy ? { planStrategy } : {}),
-      changedFiles: [],
-      mutationCheckpointIds: [],
-      reasonCodes,
-      warnings,
-      usage: budget.snapshot(),
-      startedAtMs: startedMs,
-      repoBuildStateBefore: shared.repoBuildStateBefore,
-      repoBuildStateAfter: shared.repoBuildStateAfter,
+    await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
+        runId,
+        requestId: shared.requestId,
+        suspensionKind: suspendKind,
+        input,
+        decision,
+        pinnedState: undefined,
+        messages: [],
+        toolCacheEntries: [],
+        pendingApproval: undefined,
+        plan: ensured.plan,
+        ...(planStrategy ? { planStrategy } : {}),
+        changedFiles: [],
+        mutationCheckpointIds: [],
+        reasonCodes,
+        warnings,
+        usage: budget.snapshot(),
+        startedAtMs: startedMs,
+        repoBuildStateBefore: shared.repoBuildStateBefore,
+        repoBuildStateAfter: shared.repoBuildStateAfter,
+      },
     });
   }
   runtime.emit(bus, {
     type: "suspended",
     runId,
-    kind: "clarification_required",
+    kind: suspendKind,
     rationale,
     at: runtime.isoNow(),
   });
@@ -177,9 +201,10 @@ export async function applyPostPlanTaskListGate(params: {
       plan: ensured.plan,
       answer: rationale,
       suspension: {
-        kind: "clarification_required",
+        kind: suspendKind,
         rationale,
-        clarificationPrompt: rationale,
+        clarificationPrompt: "Plan needed before building.",
+        clarifyOrigin: "hollow_plan",
       },
       reasonCodes,
     }),

@@ -5,16 +5,16 @@
  * during the engine rewrite.
  */
 
-export { RequestIntakePipeline } from "./pipeline/RequestIntakePipeline";
+export { RequestIntakePipeline } from "./flow/RequestIntakePipeline";
 export type {
   RequestIntakePipelineDependencies,
   RequestIntakeResult,
-} from "./pipeline/RequestIntakePipeline";
+} from "./flow/RequestIntakePipeline";
 
 export { REQUEST_INTAKE_STAGES } from "./constants";
 export type { RequestIntakeStageName } from "./constants";
 
-export { UserRequestEnvelopeBuilder } from "./actions";
+export { UserRequestEnvelopeBuilder } from "./flow/steps";
 export type { CreateUserRequestInput } from "./contracts";
 export type {
   UserRequestEnvelope,
@@ -53,9 +53,9 @@ export {
   META_COMMAND_LIFECYCLES,
   SUPPORTED_IMAGE_MIME_TYPES,
   BUILTIN_META_COMMAND_SPECS,
-} from "./policy";
+} from "./rules";
 
-export { resolveInteractionMode } from "./actions";
+export { resolveInteractionMode } from "./flow/steps";
 export {
   sanitizeUserMessage,
   classifyLeadingCommand,
@@ -64,4 +64,4 @@ export {
   extractMentionArtifacts,
   mergeReferencedArtifacts,
   normalizeAttachments,
-} from "./actions";
+} from "./flow/steps";

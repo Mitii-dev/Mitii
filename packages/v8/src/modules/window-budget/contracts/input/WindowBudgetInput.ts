@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import { WINDOW_BUDGET_SCHEMA_VERSION } from "../../constants";
-import { WINDOW_BUDGET_EFFORTS } from "../../policy/effort";
-import { WINDOW_BUDGET_MODES } from "../../policy/mode";
+import { WINDOW_BUDGET_EFFORTS } from "../../rules/effort";
+import { WINDOW_BUDGET_MODES } from "../../rules/mode";
 
 const ratioSchema = z.number().min(0).max(1);
 const positiveIntSchema = z.number().int().positive();

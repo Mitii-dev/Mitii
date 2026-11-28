@@ -13,14 +13,14 @@ describe('PendingPlanBanner', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('shows the default description and runs the execute action', () => {
+  it('shows the default description and runs the Build action', () => {
     const onExecute = vi.fn();
     render(<PendingPlanBanner visible onExecuteInAgent={onExecute} />);
     expect(screen.getByRole('status').textContent).toContain('Plan ready.');
     expect(screen.getByRole('status').textContent).toContain(
-      'Switch to Agent or execute to implement it.',
+      'Build to implement it.',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Execute in Agent' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
     expect(onExecute).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
@@ -30,13 +30,13 @@ describe('PendingPlanBanner', () => {
     render(
       <PendingPlanBanner
         visible
-        description="Execute in Agent to implement it."
+        description="Build to implement it."
         onExecuteInAgent={vi.fn()}
         onDismiss={onDismiss}
       />,
     );
     expect(screen.getByRole('status').textContent).toContain(
-      'Execute in Agent to implement it.',
+      'Build to implement it.',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -52,7 +52,7 @@ describe('PendingPlanBanner', () => {
       />,
     );
     expect(
-      (screen.getByRole('button', { name: 'Execute in Agent' }) as HTMLButtonElement)
+      (screen.getByRole('button', { name: 'Build' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(

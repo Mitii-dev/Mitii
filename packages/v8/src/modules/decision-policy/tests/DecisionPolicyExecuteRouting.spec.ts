@@ -374,7 +374,7 @@ describe("DecisionPolicyPipeline execute routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
     expect(decision.toolGrant.allowedTools).not.toContain("delete_file");

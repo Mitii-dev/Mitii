@@ -41,5 +41,5 @@ export type {
 export { TaskListError, taskListErrorCodeSchema } from "./errors/TaskListErrors";
 export type { TaskListErrorCode } from "./errors/TaskListErrors";
 
-export { noopModuleLogger } from "./ports/ModuleLoggerPort";
-export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

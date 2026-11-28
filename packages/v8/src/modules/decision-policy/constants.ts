@@ -5,7 +5,11 @@ export const DECISION_POLICY_SCHEMA_VERSION = 1 as const;
 
 /** Stable route identifiers; compare against these instead of inline strings. */
 export const EXECUTION_ROUTE = {
+  /** Canonical merged answer (ex direct_answer + repository_answer). */
+  ANSWER: "answer",
+  /** @deprecated One-release shim — normalize to answer. */
   DIRECT_ANSWER: "direct_answer",
+  /** @deprecated One-release shim — normalize to answer. */
   REPOSITORY_ANSWER: "repository_answer",
   CLARIFY: "clarify",
   DIAGNOSE: "diagnose",
@@ -14,12 +18,19 @@ export const EXECUTION_ROUTE = {
 } as const;
 
 export const EXECUTION_ROUTES = [
+  EXECUTION_ROUTE.ANSWER,
   EXECUTION_ROUTE.DIRECT_ANSWER,
   EXECUTION_ROUTE.REPOSITORY_ANSWER,
   EXECUTION_ROUTE.CLARIFY,
   EXECUTION_ROUTE.DIAGNOSE,
   EXECUTION_ROUTE.PLAN,
   EXECUTION_ROUTE.EXECUTE,
+] as const;
+
+/** Legacy answer aliases accepted on parse; emitters use ANSWER. */
+export const LEGACY_ANSWER_ROUTES = [
+  EXECUTION_ROUTE.DIRECT_ANSWER,
+  EXECUTION_ROUTE.REPOSITORY_ANSWER,
 ] as const;
 
 export const PLANNING_DEPTHS = ["none", "internal", "visible"] as const;
@@ -75,10 +86,14 @@ export {
   OPT_IN_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
-} from "./toolIds";
+  TOOL_FAMILIES,
+  expandToolFamilies,
+} from "./rules/tool-families";
+export type { ToolFamilyId } from "./rules/tool-families";
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",
+  "mode_database_readonly",
   "mode_plan_only",
   "clarification_material",
   "diagnosis_readonly",
@@ -126,11 +141,22 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Dialogue continuity: prior open work + act/steer stance → execute. */
+  "continuity_bias_execute",
+  /** Dialogue continuity: prior open work + pure question → answer. */
+  "continuity_bias_answer",
+  /** Prior answered Q&A; defer to normal plate for a new act ask. */
+  "continuity_answered_defer_plate",
   /** Tool grant profile selected by BuildToolGrant (audit / debug). */
   "grant_profile_none",
   "grant_profile_network_only",
   "grant_profile_readonly",
+  "grant_profile_research",
   "grant_profile_agent_execute",
+  /** ScopeVerdict protectedPaths dual-written onto grant (S2-SCOPE). */
+  "grant_protected_paths_applied",
+  "grant_mutation_fence_applied",
+  "grant_from_plate",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",
   /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */
@@ -241,3 +267,47 @@ export const DIAGNOSIS_TASK_INTENTS = [
 ] as const;
 
 export const ANSWER_TASK_INTENTS = ["question", "docs"] as const;
+
+export type DecisionReasonCodeConst =
+  (typeof DECISION_REASON_CODES)[number];
+
+/**
+ * Named accessors for frequently logged reason codes.
+ * Full catalog remains {@link DECISION_REASON_CODES}.
+ */
+export const DECISION_REASON = {
+  turnContinuation: "turn_continuation",
+  grantNarrowed: "grant_narrowed",
+  grantExpanded: "grant_expanded",
+  mutationBudgetTight: "mutation_budget_tight",
+} as const satisfies Record<string, DecisionReasonCodeConst>;
+
+export const DECISION_POLICY_MESSAGES = {
+  inputInvalid: "Decision Policy input failed schema validation.",
+} as const;
+
+/** Ordered flow stage names (decide path + logger). */
+export const DECISION_POLICY_STAGES = {
+  normalizeAndGuard: "1-normalize-and-guard",
+  resolveRouteAndGate: "2-resolve-route-and-gate",
+  compileGrantAndFences: "3-compile-grant-and-fences",
+  emitDecisionAndTrace: "4-emit-decision-and-trace",
+  /** @deprecated Prefer normalizeAndGuard */
+  scanInjection: "1-normalize-and-guard",
+  /** @deprecated Prefer resolveRouteAndGate */
+  planRoute: "2-resolve-route-and-gate",
+  /** @deprecated Prefer compileGrantAndFences */
+  compileGrant: "3-compile-grant-and-fences",
+  /** @deprecated Prefer compileGrantAndFences */
+  clampInjection: "3-compile-grant-and-fences",
+  /** @deprecated Prefer compileGrantAndFences */
+  intersectSafety: "3-compile-grant-and-fences",
+  /** @deprecated Prefer emitDecisionAndTrace */
+  resolveContext: "4-emit-decision-and-trace",
+  /** @deprecated Prefer emitDecisionAndTrace */
+  finalizeDecision: "4-emit-decision-and-trace",
+} as const;
+
+export type DecisionPolicyStageName =
+  (typeof DECISION_POLICY_STAGES)[keyof typeof DECISION_POLICY_STAGES];
+

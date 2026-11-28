@@ -96,6 +96,14 @@ describe("DiscoveryBrief contract", () => {
     expect(empty.openQuestions.length).toBeGreaterThan(0);
   });
 
+  it("clamps oversized objectives instead of throwing too_big", () => {
+    const compiled = compileDiscoveryBrief({
+      schemaVersion: 1,
+      objective: `Plan a large change. ${"detail ".repeat(400)}`,
+    });
+    expect(compiled.objective.length).toBeLessThanOrEqual(1_000);
+  });
+
   it("does not treat config-only reads as high-confidence change surfaces", () => {
     const compiled = compileDiscoveryBrief({
       schemaVersion: 1,

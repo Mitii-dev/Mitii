@@ -1,26 +1,26 @@
 /**
  * Public adapters implementing Repository Context ports for hosts and peers.
  */
-export { ContextAssemblyFactory } from "../internal/context-assembly/ContextAssemblyFactory";
-export { ContextSelector } from "../internal/context-selection/ContextSelector";
-export { HybridRetrievalFactory } from "../internal/hybrid-retrieval/HybridRetrievalFactory";
-export { IdentifierAwareRetrievalReranker } from "../internal/hybrid-retrieval/IdentifierAwareRetrievalReranker";
+export { ContextAssemblyFactory } from "../helpers/context-assembly/ContextAssemblyFactory";
+export { ContextSelector } from "../helpers/context-selection/ContextSelector";
+export { HybridRetrievalFactory } from "../helpers/hybrid-retrieval/HybridRetrievalFactory";
+export { IdentifierAwareRetrievalReranker } from "../helpers/hybrid-retrieval/IdentifierAwareRetrievalReranker";
 export {
   CrossEncoderRetrievalReranker,
-} from "../internal/hybrid-retrieval/CrossEncoderRetrievalReranker";
+} from "../helpers/hybrid-retrieval/CrossEncoderRetrievalReranker";
 export type {
   CrossEncoderDocumentScorer,
   CrossEncoderDocumentFormatter,
-} from "../internal/hybrid-retrieval/CrossEncoderRetrievalReranker";
+} from "../helpers/hybrid-retrieval/CrossEncoderRetrievalReranker";
 export type {
   ContextAssemblyInput,
   ContextAssemblyResult,
-} from "../internal/context-assembly/types";
+} from "../helpers/context-assembly/types";
 export type {
   ContextSelectionInput,
   ContextSelectionResult,
-} from "../internal/context-selection/types";
+} from "../helpers/context-selection/types";
 export type {
   HybridRetrievalInput,
   HybridRetrievalResult,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";

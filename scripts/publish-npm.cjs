@@ -13,6 +13,7 @@ const packages = [
   '@mitii/ui-react',
   '@mitii/v8',
   '@mitii/search-kit',
+  '@mitii/sandbox',
   '@mitii/sdk',
   '@mitii/automation',
   '@mitii/mcp',

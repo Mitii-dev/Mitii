@@ -6,6 +6,7 @@ import type { RepoBuildState } from "../../../modules/verification";
 
 import {
   buildBudgetWallRationale,
+  normalizeBudgetWallReason,
   shouldOfferBudgetWallContinue,
 } from "../actions";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
@@ -19,6 +20,11 @@ import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { ToolCallCache } from "../internal/ToolCallCache";
 import type { TaskListRef } from "../internal/taskListRuntime";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
 
@@ -105,21 +111,35 @@ export async function suspendForBudgetWall(
   if (!runtime.deps.checkpointStore) {
     return undefined;
   }
+  const wallReason = normalizeBudgetWallReason(opts.wallReason);
   const rationale = buildBudgetWallRationale({
-    reason: opts.wallReason,
+    reason: wallReason,
     changedFiles: opts.changedFiles,
     taskList: taskListRef.current,
     answer: opts.answer,
     mutationRequired: opts.mutationRequired,
   });
+  // S10-EVAC: budget wall via gates hub.
+  const wallVerdict = consultRuntimeGate("on_budget", {
+    runId,
+    budgetHardWall: wallReason === "budget_exhausted",
+    stalledOrBlocked:
+      wallReason === "stalled_or_blocked" ||
+      wallReason === "incomplete_progress",
+    incompleteProgress: wallReason === "incomplete_progress",
+  });
+  const wallKind = hubSuspendKind(wallVerdict, "continue_required");
   reasonCodes.push("stall_continue_suspended");
-  await runtime.deps.checkpointStore.save({
+  warnings.push("gates_hub:budget_wall");
+  await saveSuspendedRun({
+    store: runtime.deps.checkpointStore,
+    checkpoint: {
     runId,
     requestId,
     ...(runtime.contextEpochs.get(runId)
       ? { contextEpoch: runtime.contextEpochs.get(runId) }
       : {}),
-    suspensionKind: "continue_required",
+    suspensionKind: wallKind,
     input,
     decision,
     pinnedState,
@@ -129,7 +149,7 @@ export async function suspendForBudgetWall(
     mutationCheckpointIds: opts.mutationCheckpointIds,
     stallContinueRationale: rationale,
     continuePartialAnswer: opts.answer || undefined,
-    continueWallReason: opts.wallReason,
+    continueWallReason: wallReason,
     continueOverrideCount,
     reasonCodes,
     warnings,
@@ -146,6 +166,7 @@ export async function suspendForBudgetWall(
       : {}),
     ...(plan ? { plan } : {}),
     ...(executionSeed ? { executionSeed } : {}),
+    },
   });
   runtime.emit(bus, {
     type: "suspended",

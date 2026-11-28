@@ -115,6 +115,9 @@ export function toAgentEngineStartInput(
     approvedPlan: parsed.approvedPlan,
     approvedPlanStrategy: parsed.approvedPlanStrategy,
     taskList: parsed.taskList,
+    ...(parsed.completedPlanStepIds?.length
+      ? { completedPlanStepIds: parsed.completedPlanStepIds }
+      : {}),
     budget: resolveStartBudget(parsed),
     model: parsed.model,
     temperature: parsed.temperature,
@@ -124,12 +127,18 @@ export function toAgentEngineStartInput(
     steering: parsed.steering,
     userSafetyRules: parsed.userSafetyRules,
     dirtyPaths: parsed.dirtyPaths,
+    ...(parsed.runtimeSituation
+      ? { runtimeSituation: parsed.runtimeSituation }
+      : {}),
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
     loopPolicy: parsed.loopPolicy,
     v8LoopPolicy: parsed.v8LoopPolicy,
     logVerbosity: parsed.logVerbosity,
     requiredSkillIds,
+    ...(parsed.excludedSkillIds && parsed.excludedSkillIds.length > 0
+      ? { excludedSkillIds: parsed.excludedSkillIds }
+      : {}),
     requiredMcpServerIds,
     instructions: buildStartInstructions(parsed),
   });

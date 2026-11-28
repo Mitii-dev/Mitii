@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { intentClassificationSchema } from "../intent/schema";
+import { intentClassificationSchema } from "../helpers/intent/schema";
 import {
   coerceLlmClassificationJson,
   salvageLlmClassificationStages,
   stripTaskHints,
   isPromptExemplarClassification,
-} from "../intent/classifiers/llm/coerceLlmClassification";
+} from "../adapters/llm/coerceLlmClassification";
 
 describe("coerceLlmClassificationJson", () => {
   it("coerces the landing-page starfield clarify ballot into a valid schema", () => {

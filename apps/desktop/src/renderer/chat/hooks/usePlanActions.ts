@@ -11,8 +11,9 @@ import { type HistoryThread } from '../chatTypes.js';
 export function usePlanActions(deps: Pick<
     ReturnType<typeof useChatThreadState>,
     'pendingPlan' | 'busy' | 'pendingPlanStrategy' | 'pendingTaskList'
-    | 'setPendingPlan' | 'setPendingPlanStrategy' | 'setPendingTaskList'
-    | 'setCompletedPlanStepIds' | 'threadId' | 'setHistory'
+    | 'pendingNextActionPrompt' | 'setPendingPlan' | 'setPendingPlanStrategy'
+    | 'setPendingTaskList' | 'setCompletedPlanStepIds'
+    | 'setPendingNextActionPrompt' | 'threadId' | 'setHistory'
   > &
   Pick<
     ReturnType<typeof useComposerState>,
@@ -31,10 +32,12 @@ export function usePlanActions(deps: Pick<
     busy,
     pendingPlanStrategy,
     pendingTaskList,
+    pendingNextActionPrompt,
     setPendingPlan,
     setPendingPlanStrategy,
     setPendingTaskList,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     threadId,
     setHistory,
     setMode,
@@ -61,11 +64,53 @@ export function usePlanActions(deps: Pick<
     pendingTaskList,
   ]);
 
+  const continueNextSlice = useCallback(() => {
+    if (busy) return;
+    // Discovery is recon-only — never Continue on "Find relevant entrypoint".
+    const discoveryDesk =
+      pendingTaskList?.purpose === 'discovery' ||
+      pendingTaskList?.source === 'discovery';
+    const executionDesk = discoveryDesk ? null : pendingTaskList;
+    const nextTitle = executionDesk?.items.find(
+      (item) => item.status === 'pending' || item.status === 'active',
+    )?.title;
+    const repairing =
+      executionDesk?.title === 'Verification repair' ||
+      (executionDesk?.items.some((item) => item.id === 'repair_fix') &&
+        executionDesk?.items.some((item) => item.id === 'repair_reverify'));
+    const prompt =
+      pendingNextActionPrompt?.trim() ||
+      (nextTitle
+        ? repairing
+          ? `Continue with verification repair: ${nextTitle}`
+          : `Continue with the next plan item: ${nextTitle}`
+        : 'Continue with the next plan item.');
+    setMode('agent');
+    void onSubmit({
+      prompt,
+      mode: 'agent',
+      ...(pendingPlan ? { approvedPlan: pendingPlan } : {}),
+      ...(pendingPlanStrategy
+        ? { approvedPlanStrategy: pendingPlanStrategy }
+        : {}),
+      ...(executionDesk ? { taskList: executionDesk } : {}),
+    });
+  }, [
+    busy,
+    onSubmit,
+    pendingNextActionPrompt,
+    pendingPlan,
+    pendingPlanStrategy,
+    pendingTaskList,
+    setMode,
+  ]);
+
   const dismissPendingPlan = useCallback(() => {
     setPendingPlan(null);
     setPendingPlanStrategy(null);
     setPendingTaskList(null);
     setCompletedPlanStepIds(new Set());
+    setPendingNextActionPrompt(null);
     if (!engine || !threadId) return;
     void postHistory({
       ...engine,
@@ -81,6 +126,7 @@ export function usePlanActions(deps: Pick<
 
   return {
     executePendingPlan,
+    continueNextSlice,
     dismissPendingPlan,
   };
 }

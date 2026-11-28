@@ -114,6 +114,8 @@ export const SuspensionPayloadSchema = z.object({
   ]),
   rationale: z.string().optional(),
   clarificationPrompt: z.string().optional(),
+  /** Why clarification_required fired (hollow_plan, scope_fork, …). */
+  clarifyOrigin: z.string().optional(),
   clarificationOptions: z.array(ClarificationOptionViewSchema).optional(),
   /** Structured plan awaiting approval (plan_approval_required). */
   plan: PlanViewSchema.nullable().optional(),

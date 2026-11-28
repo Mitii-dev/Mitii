@@ -11,7 +11,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
     id: "golden-grant-scoped-mutation",
     category: "grant",
     mode: "agent",
-    message: "Update src/utils/format.ts only",
+    message: "Only edit under src/utils — update src/utils/format.ts",
     understanding: createUnderstanding({
       primaryTaskIntent: "refactor",
       taskAnalysis: {
@@ -23,7 +23,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
-      pathScopes: ["src/utils"],
+      pathScopes: ["."],
       mutationPathScopes: ["src/utils"],
     },
   },
@@ -96,7 +96,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsIncludes: ["web_search", "fetch_url"],
       reasonCodesIncludes: ["network_access_granted"],
     },
@@ -113,7 +113,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsExcludes: ["web_search"],
     },
   },
@@ -130,7 +130,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       allowedToolsIncludes: ["web_search", "fetch_url"],
       reasonCodesIncludes: ["network_access_granted"],
     },
@@ -148,7 +148,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       allowedToolsExcludes: ["web_search"],
     },
   },
@@ -168,7 +168,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsExcludes: ["web_search"],
     },
   },

@@ -4,9 +4,9 @@ import {
   isBroadSharedScopeRepair,
   isConcreteLocalizedMutationAsk,
   shouldRecommendChangeImpact,
-} from "../../actions/ClassifySharedScopeRepair";
+} from "../../helpers/ClassifySharedScopeRepair";
 import { createUnderstanding } from "../fixtures/decisionCases";
-import { resolvePlanningDepth } from "../../actions/ResolvePlanningDepth";
+import { resolvePlanningDepth } from "../../helpers/ResolvePlanningDepth";
 
 describe("shouldRecommendChangeImpact", () => {
   it("recommends shared type/interface edits even when single_location", () => {
@@ -224,7 +224,7 @@ describe("resolvePlanningDepth change-impact recommend", () => {
 
     const result = resolvePlanningDepth({
       mode: "ask",
-      route: "repository_answer",
+      route: "answer",
       understanding,
       message: "What breaks if I rename createSession?",
       windowPolicy: {

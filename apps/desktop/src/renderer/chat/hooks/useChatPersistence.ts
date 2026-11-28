@@ -126,6 +126,8 @@ export function useChatPersistence(deps: Pick<
       pendingPlan?: PlanArtifact | null;
       pendingPlanStrategy?: PlanStrategyDecision | null;
       pendingTaskList?: TaskList | null;
+      completedPlanStepIds?: string[] | null;
+      pendingNextActionPrompt?: string | null;
       clearPendingPlan?: boolean;
     },
   ) => {
@@ -152,6 +154,14 @@ export function useChatPersistence(deps: Pick<
                 : {}),
               ...(planFields && 'pendingTaskList' in planFields
                 ? { pendingTaskList: planFields.pendingTaskList }
+                : {}),
+              ...(planFields && 'completedPlanStepIds' in planFields
+                ? { completedPlanStepIds: planFields.completedPlanStepIds }
+                : {}),
+              ...(planFields && 'pendingNextActionPrompt' in planFields
+                ? {
+                    pendingNextActionPrompt: planFields.pendingNextActionPrompt,
+                  }
                 : {}),
             }),
       },

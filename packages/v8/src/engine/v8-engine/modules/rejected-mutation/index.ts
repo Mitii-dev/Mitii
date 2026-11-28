@@ -1,5 +1,7 @@
+/** Shim — owner is runtime/helpers/tool-recovery. */
 export {
   buildRejectedMutationRecoveryMessage,
   buildRejectedToolRecoveryMessage,
   allowsTargetedDiscoveryAfterRejectedMutation,
-} from "../../actions/rejectedToolRecovery";
+  isTargetedDiscoveryAfterRejectedMutation,
+} from "../../../../runtime/helpers/tool-recovery";

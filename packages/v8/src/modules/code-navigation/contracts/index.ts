@@ -35,4 +35,11 @@ export {
 } from "./errors/CodeNavigationError";
 export type { CodeNavigationErrorCode } from "./errors/CodeNavigationError";
 
-export type { CodeNavigationPort, CodeNavigationCapability, CodeNavigationCallOptions } from "./ports/CodeNavigationPort";
+export type {
+  CodeNavigationPort,
+  CodeNavigationCapability,
+  CodeNavigationCallOptions,
+} from "../ports/CodeNavigationPort";
+
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

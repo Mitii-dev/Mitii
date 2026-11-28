@@ -1,5 +1,5 @@
 /**
- * Shaped discovery profiles for early pipeline discovery.
+ * Shim — owner is runtime/helpers/shaped-discovery.
  */
 export {
   SHAPED_DISCOVERY_PROFILES,
@@ -15,9 +15,9 @@ export {
   ciCdDiscoveryProfile,
   databaseDiscoveryProfile,
   frontendComponentDiscoveryProfile,
-} from "../../actions/shapedDiscovery";
+} from "../../../../runtime/helpers/shaped-discovery";
 export type {
   ShapedDiscoveryProfile,
   CreateShapedDiscoveryProfileInput,
   PathScoreRule,
-} from "../../actions/shapedDiscovery";
+} from "../../../../runtime/helpers/shaped-discovery";

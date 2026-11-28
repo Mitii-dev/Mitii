@@ -23,14 +23,16 @@ export function SuggestMenu({ m }: { m: AppModel }) {
     >
       {suggestLoading && suggestItems.length === 0 ? (
         <button type="button" disabled>
-          Searching…
+          Searching files and folders…
         </button>
       ) : null}
       {!suggestLoading && suggestItems.length === 0 ? (
         <button type="button" disabled>
           {mention?.query
-            ? `No matches for “${mention.query}”`
-            : 'Type to filter files, folders, skills, MCP'}
+            ? `No matches for “${mention.query}” — try a folder name`
+            : !m.engine
+              ? 'Workspace engine not ready — wait a moment, then type @ again'
+              : 'Keep typing a folder or file name (or @skill: / @mcp:)'}
         </button>
       ) : null}
       {suggestItems.map((item, index) => {

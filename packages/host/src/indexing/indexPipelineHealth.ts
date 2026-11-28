@@ -16,6 +16,7 @@ import {
   type IndexProgressSnapshot,
 } from './indexLock.js';
 import {
+  isSemanticIndexDisabledReason,
   readIndexRuntimeMetadata,
   type IndexRuntimeMetadata,
 } from './semanticIndex.js';
@@ -197,10 +198,21 @@ function deriveEmbeddings(
         : {}),
     });
   }
-  if (meta?.lastEmbeddingError) {
+  if (
+    meta?.lastEmbeddingError &&
+    !isSemanticIndexDisabledReason(meta.lastEmbeddingError)
+  ) {
     return entry('degraded', {
       reason: meta.lastEmbeddingError,
       ...(meta.embeddingProfile?.id
+        ? { profileId: meta.embeddingProfile.id }
+        : {}),
+    });
+  }
+  if (isSemanticIndexDisabledReason(meta?.lastEmbeddingError)) {
+    return entry('unavailable', {
+      reason: meta?.lastEmbeddingError,
+      ...(meta?.embeddingProfile?.id
         ? { profileId: meta.embeddingProfile.id }
         : {}),
     });
@@ -392,7 +404,11 @@ export function readIndexPipelineHealth(
     embeddings,
   });
 
-  const lastError = meta?.lastEmbeddingError;
+  const lastError =
+    meta?.lastEmbeddingError &&
+    !isSemanticIndexDisabledReason(meta.lastEmbeddingError)
+      ? meta.lastEmbeddingError
+      : undefined;
 
   return {
     schemaVersion: INDEX_PIPELINE_HEALTH_SCHEMA_VERSION,

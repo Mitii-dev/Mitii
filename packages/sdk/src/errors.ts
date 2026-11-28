@@ -50,12 +50,24 @@ export function mapToSdkError(error: unknown): MitiiSdkError {
     );
   }
   if (error instanceof ZodError) {
+    const causeDetail = error.issues
+      .map((issue) => {
+        const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+        return `${path}: ${issue.message}`;
+      })
+      .join('; ');
+    const firstPath =
+      error.issues[0]?.path.length && error.issues[0].path.length > 0
+        ? error.issues[0].path.join('.')
+        : undefined;
     return new MitiiSdkError(
       'invalid_input',
-      'SDK input failed schema validation.',
+      firstPath
+        ? `SDK input failed schema validation at ${firstPath}.`
+        : 'SDK input failed schema validation.',
       {
         cause: error,
-        causeDetail: error.issues.map((issue) => issue.message).join('; '),
+        causeDetail,
       },
     );
   }

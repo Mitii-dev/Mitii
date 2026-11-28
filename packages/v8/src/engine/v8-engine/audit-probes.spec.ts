@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { decideVerificationGate } from './actions/decideVerificationGate';
 import { maybeAutoAdvanceTaskList, completePlanStepsFromDiagnostics } from './internal/taskListRuntime';
 import { evaluateActiveStepMutateReadiness, mutateLockModelRequestFields } from './modules/mutate-readiness';
-import { decideMutateEvidenceAction } from './modules/mutate-readiness/decideMutateEvidenceAction';
+import { decideMutateEvidenceAction } from './modules/mutate-readiness';
 import { createLoopFileReadTracker, markLoopFileReadResult } from './actions/isExplorationRereadHeavy';
 import { applySucceededMutationSideEffects } from './actions/invalidateReadonlyCachesAfterMutation';
 import { ToolCallCache } from './internal/ToolCallCache';

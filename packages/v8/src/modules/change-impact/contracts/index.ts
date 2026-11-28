@@ -85,4 +85,7 @@ export {
 } from "./errors/ChangeImpactError";
 export type { ChangeImpactErrorCode } from "./errors/ChangeImpactError";
 
-export type { RepositoryGraphPort } from "./ports/RepositoryGraphPort";
+export type { RepositoryGraphPort } from "../ports/RepositoryGraphPort";
+
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

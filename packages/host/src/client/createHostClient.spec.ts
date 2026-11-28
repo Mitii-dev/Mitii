@@ -161,14 +161,20 @@ describe('readSandboxOptionsFromEnv', () => {
     });
   });
 
-  it('reads enable, network and backend', () => {
+  it('reads enable, network, backend and lifecycle', () => {
     expect(
       readSandboxOptionsFromEnv({
         MITII_SANDBOX: 'true',
         MITII_SANDBOX_NETWORK: 'allow',
         MITII_SANDBOX_BACKEND: 'podman',
+        MITII_SANDBOX_LIFECYCLE: 'session',
       }),
-    ).toEqual({ enabled: true, network: 'allow', prefer: 'podman' });
+    ).toEqual({
+      enabled: true,
+      network: 'allow',
+      prefer: 'podman',
+      lifecycle: 'session',
+    });
   });
 
   it('ignores unknown backends', () => {

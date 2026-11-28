@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compileDecisionBrief,
   formatDecisionBriefForPrompt,
-} from "../actions/CompileDecisionBrief";
+} from "../helpers/CompileDecisionBrief";
 import type { ExecutionDecision } from "../contracts";
 import { DECISION_POLICY_SCHEMA_VERSION } from "../constants";
 

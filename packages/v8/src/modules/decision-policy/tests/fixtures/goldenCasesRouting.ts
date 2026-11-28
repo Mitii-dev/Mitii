@@ -115,7 +115,7 @@ export const GOLDEN_DECISION_CASES_ROUTING: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       allowedToolsExcludes: ["apply_patch"],
       reasonCodesIncludes: ["mode_ask_readonly"],
@@ -136,8 +136,8 @@ export const GOLDEN_DECISION_CASES_ROUTING: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "direct_answer",
-      maximumWorkspaceEffect: "none",
+      route: "answer",
+      maximumWorkspaceEffect: "read",
       reasonCodesIncludes: ["direct_knowledge_answer"],
     },
   },
@@ -232,7 +232,8 @@ export const GOLDEN_DECISION_CASES_ROUTING: GoldenDecisionCase[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
-      mutationPathScopes: ["app"],
+      // Path mention is focus, not an automatic mutation fence.
+      pathScopes: ["."],
       reasonCodesIncludes: ["mutation_execute"],
     },
   },
@@ -270,7 +271,7 @@ export const GOLDEN_DECISION_CASES_ROUTING: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       reasonCodesIncludes: ["repository_grounded_answer"],
     },
@@ -286,7 +287,7 @@ export const GOLDEN_DECISION_CASES_ROUTING: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "repository", recommendsRepositoryDiscovery: true },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       reasonCodesIncludes: ["repository_grounded_answer"],
     },

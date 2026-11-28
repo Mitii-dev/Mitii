@@ -265,11 +265,29 @@ export function parseTaskList(value: unknown): TaskList | undefined {
   };
 }
 
+export interface RunNextAction {
+  kind: 'continue_checklist' | 'next_campaign_scope' | string;
+  prompt: string;
+}
+
+export interface RunProgressSketch {
+  planCompletedCount: number;
+  planTotalCount: number;
+  doneCount: number;
+  pendingCount: number;
+  nextTitle?: string;
+  nextDetail?: string;
+  openTitles?: string[];
+}
+
 /** Pull plan fields from an AgentRunResult-shaped object. */
 export function extractPlanFromRunResult(result: unknown): {
   plan?: PlanArtifact;
   planStrategy?: PlanStrategyDecision;
   taskList?: TaskList;
+  completedPlanStepIds?: string[];
+  nextAction?: RunNextAction;
+  progress?: RunProgressSketch;
 } {
   if (!isRecord(result)) return {};
   const fromTop = parsePlanArtifact(result.plan);
@@ -280,17 +298,63 @@ export function extractPlanFromRunResult(result: unknown): {
   const plan = fromTop ?? fromSuspension;
   const planStrategy = parsePlanStrategy(result.planStrategy);
   const taskList = parseTaskList(result.taskList);
+  const completedPlanStepIds = Array.isArray(result.completedPlanStepIds)
+    ? result.completedPlanStepIds.filter(
+        (id): id is string => typeof id === 'string' && id.trim().length > 0,
+      )
+    : undefined;
+  const nextActionRaw = isRecord(result.nextAction) ? result.nextAction : null;
+  const nextAction =
+    nextActionRaw &&
+    typeof nextActionRaw.kind === 'string' &&
+    typeof nextActionRaw.prompt === 'string' &&
+    nextActionRaw.prompt.trim()
+      ? {
+          kind: nextActionRaw.kind,
+          prompt: nextActionRaw.prompt.trim(),
+        }
+      : undefined;
+  const progressRaw = isRecord(result.progress) ? result.progress : null;
+  const progress =
+    progressRaw &&
+    typeof progressRaw.planCompletedCount === 'number' &&
+    typeof progressRaw.planTotalCount === 'number' &&
+    typeof progressRaw.doneCount === 'number' &&
+    typeof progressRaw.pendingCount === 'number'
+      ? {
+          planCompletedCount: progressRaw.planCompletedCount,
+          planTotalCount: progressRaw.planTotalCount,
+          doneCount: progressRaw.doneCount,
+          pendingCount: progressRaw.pendingCount,
+          ...(typeof progressRaw.nextTitle === 'string'
+            ? { nextTitle: progressRaw.nextTitle }
+            : {}),
+          ...(typeof progressRaw.nextDetail === 'string'
+            ? { nextDetail: progressRaw.nextDetail }
+            : {}),
+          ...(Array.isArray(progressRaw.openTitles)
+            ? {
+                openTitles: progressRaw.openTitles.filter(
+                  (t): t is string => typeof t === 'string',
+                ),
+              }
+            : {}),
+        }
+      : undefined;
   return {
     ...(plan ? { plan } : {}),
     ...(planStrategy ? { planStrategy } : {}),
     ...(taskList ? { taskList } : {}),
+    ...(completedPlanStepIds?.length ? { completedPlanStepIds } : {}),
+    ...(nextAction ? { nextAction } : {}),
+    ...(progress ? { progress } : {}),
   };
 }
 
 /**
  * When the model returns plan markdown but no structured PlanArtifact,
  * build a minimal artifact so the desktop can show the follow strip and
- * offer “Execute in Agent” (VS Code planFromAnswer parity).
+ * offer Build (VS Code planFromAnswer parity).
  */
 export function synthesizePlanArtifactFromAnswer(
   answer: string,

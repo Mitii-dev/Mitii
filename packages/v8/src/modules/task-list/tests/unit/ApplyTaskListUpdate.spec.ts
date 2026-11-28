@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { TASK_LIST_SCHEMA_VERSION, TaskListPipeline } from "../../index";
-import { clipTaskTitle } from "../../actions/1-apply-update";
+import { clipTaskTitle } from "../../flow/steps/1-apply-update";
 import { taskListApplyInputSchema, taskListSchema } from "../../contracts";
 
 function seed(pipeline: TaskListPipeline) {

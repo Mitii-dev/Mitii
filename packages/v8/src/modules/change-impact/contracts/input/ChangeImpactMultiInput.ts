@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { CHANGE_IMPACT_SCHEMA_VERSION } from "../../constants";
-import { CHANGE_IMPACT_POLICY } from "../../policy";
+import { CHANGE_IMPACT_POLICY } from "../../rules";
 import {
   changeImpactInputSchema,
   changeImpactSeedSchema,

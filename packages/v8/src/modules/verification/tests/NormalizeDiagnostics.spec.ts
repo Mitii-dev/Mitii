@@ -4,7 +4,7 @@ import type { ProjectDescriptor } from "../../repository-state";
 import {
   normalizeDiagnostics,
   packDiagnosticsForModel,
-} from "../actions/NormalizeDiagnostics";
+} from "../flow/steps/5-normalize-diagnostics";
 import type { VerificationCheckResult } from "../contracts";
 
 const PROJECT: ProjectDescriptor = {

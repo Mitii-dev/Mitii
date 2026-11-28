@@ -59,10 +59,10 @@ export function IndexFeature({ m }: { m: SettingsModel }) {
         Enable semantic (vector) indexing
       </label>
       <p className="field-help">
-        Off by default. When on, embeddings run after FTS/symbols
-        (Bundled MiniLM on-device, or Ollama / OpenAI-compatible).
-        Expect roughly 1–3 minutes per 1k files for MiniLM; HTTP
-        sources are slower.
+        On by default with Bundled MiniLM. Embeddings run after
+        FTS/symbols (or use Ollama / OpenAI-compatible). Expect
+        roughly 1–3 minutes per 1k files for MiniLM; HTTP sources
+        are slower. Turn off to keep lexical search only.
       </p>
   
       {draft.semanticIndex.enabled ? (

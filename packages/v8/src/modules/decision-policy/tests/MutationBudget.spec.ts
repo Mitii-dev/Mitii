@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { DecisionPolicyPipeline } from "../index";
-import { MUTATION_BUDGET_PROFILES } from "../policy";
+import { MUTATION_BUDGET_PROFILES } from "../rules";
 import { createInput, createUnderstanding } from "./fixtures/decisionCases";
-import { resolveMutationBudget } from "../actions/ResolveMutationBudget";
+import { resolveMutationBudget } from "../helpers/ResolveMutationBudget";
 
 describe("ResolveMutationBudget", () => {
   it("selects relaxed for simple localized tasks", () => {

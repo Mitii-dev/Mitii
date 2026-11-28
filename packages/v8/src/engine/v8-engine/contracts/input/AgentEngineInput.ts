@@ -33,6 +33,7 @@ import {
   DEFAULT_MAX_WALL_TIME_MS,
 } from "../../legacy/defaults";
 import { agentEngineThresholdsOverridesSchema } from "../../actions/resolveAgentEngineThresholds";
+import { runtimeSituationSnapshotSchema } from "../../../../runtime/contracts/input/RuntimeSituationSnapshot";
 
 const agentApprovalModeSchema = z.enum(APPROVAL_MODES);
 
@@ -110,6 +111,8 @@ export const agentEngineStartInputSchema = z
      * Engine does not stamp remaining items done when the run finishes.
      */
     taskList: taskListSchema.optional(),
+    /** Plan step ids already completed across prior turns. */
+    completedPlanStepIds: z.array(z.string().min(1)).max(64).optional(),
     /** Optional override; otherwise Engine uses default tool definitions. */
     tools: z.array(modelToolDefinitionSchema).optional(),
     budget: agentRunBudgetSchema.optional(),
@@ -235,6 +238,12 @@ export const agentEngineStartInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Host situation snapshot for runtime Orient (git/dirty/cwd/catalog).
+     * Optional — ignored by legacy event-bus start; consumed by shell adapt.
+     * SSOT: runtimeSituationSnapshotSchema (must accept host catalog name + relationships).
+     */
+    runtimeSituation: runtimeSituationSnapshotSchema.optional(),
   })
   .strict();
 

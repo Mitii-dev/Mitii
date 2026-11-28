@@ -90,7 +90,13 @@ export function WorkingTreeReviewBar({
 
   const findingsCount = summarizeReviewFindings(findings).open.length;
   const hasChanges = fileChangeCount > 0 || Boolean(runChanges?.fileCount);
-  const changeCount = files.length || runChanges?.fileCount || fileChangeCount;
+  const changeCount = Math.max(
+    fileChangeCount,
+    runChanges?.fileCount ?? 0,
+    files.length,
+  );
+  const shownCount = files.length;
+  const extraCount = Math.max(0, changeCount - shownCount);
   const additions = runChanges?.totalAdditions ?? totalAdditions;
   const deletions = runChanges?.totalDeletions ?? totalDeletions;
   const canExpand = files.length > 0;
@@ -131,6 +137,7 @@ export function WorkingTreeReviewBar({
             <>
               <strong className="composer-changes__label">
                 {changeCount} file{changeCount === 1 ? '' : 's'} changed
+                {extraCount > 0 ? ` (+${extraCount} more)` : ''}
               </strong>
               {additions > 0 || deletions > 0 ? (
                 <span className="composer-changes__stats" aria-hidden>

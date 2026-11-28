@@ -65,6 +65,7 @@ describe('SDK read-only smoke', () => {
       defaultMode: 'ask',
       defaultSessionId: 'sdk_smoke_session',
       workspaceId: 'ws_sdk_smoke',
+      startPath: 'auto',
     });
 
     const run = client.start({
@@ -79,7 +80,7 @@ describe('SDK read-only smoke', () => {
 
     const parsed = agentRunResultSchema.parse(result);
     expect(parsed.status).toBe('completed');
-    expect(parsed.route).toBe('direct_answer');
+    expect(['direct_answer', 'repository_answer']).toContain(parsed.route);
     expect(parsed.answer).toContain('Echo:');
     expect(parsed.reasonCodes).toContain('answer_produced');
 
@@ -87,6 +88,33 @@ describe('SDK read-only smoke', () => {
     for (const event of events) {
       expect(() => runEventSchema.parse(event)).not.toThrow();
     }
+  });
+
+  it('auto ask path completes via runtime shell with Echo answer', async () => {
+    const client = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'question',
+        primaryTaskIntent: 'question',
+        secondaryTaskIntents: [],
+        confidence: 0.94,
+        alternatives: [],
+        needsClarification: false,
+        reason: 'SDK runtime-auto smoke.',
+      }),
+      runLlm: new EchoLlmPort(),
+      defaultMode: 'ask',
+      startPath: 'auto',
+    });
+
+    expect(client.resolveStartPath('ask')).toBe('runtime');
+
+    const run = client.start({
+      prompt: 'what is 2+2 in general?',
+      mode: 'ask',
+    });
+    const result = await run.result;
+    expect(result.status).toBe('completed');
+    expect(result.answer).toContain('Echo:');
   });
 
   it('cancels an in-flight run through the SDK handle', async () => {
@@ -133,6 +161,7 @@ describe('SDK read-only smoke', () => {
       }),
       runLlm: slowLlm,
       defaultMode: 'ask',
+      startPath: 'auto',
     });
 
     const run = client.start({ prompt: 'Take your time' });

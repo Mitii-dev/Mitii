@@ -1,0 +1,388 @@
+import {
+  DECISION_POLICY_PATTERNS,
+  isArchitectureIntentTaxonomy,
+  isRepairIntentTaxonomy,
+} from "../../decision-policy";
+import type {
+  PlanStrategyDecision,
+  PlanningParsedInput,
+  PlanningReasonCode,
+} from "../contracts";
+import { countInScopeErrorDiagnostics } from "./evidenceScope";
+
+export type PlanStrategySource = "rules" | "override";
+
+export interface ResolvePlanStrategyResult {
+  decision: PlanStrategyDecision;
+  source: PlanStrategySource;
+  warnings: string[];
+  reasonCodes: PlanningReasonCode[];
+}
+
+/**
+ * Resolve plan strategy. Deterministic rules only — no model call.
+ * A host/test-supplied `strategyOverride` always wins (sanitized).
+ */
+export function resolvePlanStrategy(params: {
+  input: PlanningParsedInput;
+}): ResolvePlanStrategyResult {
+  if (params.input.strategyOverride) {
+    const decision = sanitizeStrategy(params.input.strategyOverride, params.input);
+    return {
+      decision,
+      source: "override",
+      warnings: [],
+      reasonCodes: [
+        strategyReasonCode(decision.strategy),
+        "plan_strategy_override",
+      ],
+    };
+  }
+
+  const decision = resolvePlanStrategyRules(params.input);
+  const knownPathsShortCircuit =
+    decision.strategy === "plan_from_ask" &&
+    params.input.explorationDepth !== "deep" &&
+    params.input.explorationDepth !== "quick" &&
+    hasKnownFileSurfaces(params.input) &&
+    !isRepairIntent(params.input) &&
+    !isMediumOrLargerTask(params.input);
+  const deferredUnclearInPlanMode =
+    params.input.mode === "plan" &&
+    (params.input.evidence.clarity === "unclear" ||
+      params.input.evidence.clarity === "ambiguous") &&
+    decision.strategy !== "clarify";
+  return {
+    decision,
+    source: "rules",
+    warnings: [],
+    reasonCodes: [
+      strategyReasonCode(decision.strategy),
+      "plan_strategy_rules",
+      ...(decision.strategy === "discover_and_plan" &&
+      isMediumOrLargerTask(params.input)
+        ? (["plan_strategy_medium_bounded_discover"] as const)
+        : []),
+      ...(knownPathsShortCircuit
+        ? (["plan_strategy_known_paths"] as const)
+        : []),
+      ...(deferredUnclearInPlanMode
+        ? (["plan_strategy_plan_mode_defers_unclear"] as const)
+        : []),
+      ...(hasOutOfScopeBuildEvidence(params.input, decision)
+        ? (["plan_build_evidence_out_of_scope"] as const)
+        : []),
+    ],
+  };
+}
+
+/**
+ * The single strategy rule table. Always resolves — no LLM, no fallback.
+ *
+ *   clarity unclear/ambiguous (not plan mode) -> clarify
+ *   mode=plan + unclear/ambiguous             -> continue (discover/plan_from_ask)
+ *   architecture-scale ask                    -> discover_and_plan (never follow_evidence)
+ *   repair intent AND in-scope errors >= 1     -> follow_evidence
+ *   repair + "fix all …" / wide package scope  -> follow_evidence
+ *   explorationDepth === "quick"               -> plan_from_ask
+ *   taskSize medium/large                      -> discover_and_plan (bounded; no known-path skip)
+ *   deep/auto AND wide scope/complexity        -> discover_and_plan
+ *   known file surfaces (small only)           -> plan_from_ask
+ *   else                                       -> plan_from_ask
+ */
+export function resolvePlanStrategyRules(
+  input: PlanningParsedInput,
+): PlanStrategyDecision {
+  // Plan mode: soft unclear/ambiguous must not skip research. Discover first;
+  // after_plan / discovery quality may still clarify for real forks.
+  if (
+    input.mode !== "plan" &&
+    (input.evidence.clarity === "unclear" ||
+      input.evidence.clarity === "ambiguous")
+  ) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "clarify",
+        rationale: "Ask clarity is insufficient for a concrete execution plan.",
+        skipDiscover: true,
+        useBuildEvidence: false,
+      },
+      input,
+    );
+  }
+
+  const inScopeErrorCount = countInScopeErrorDiagnostics({
+    buildEvidence: input.buildEvidence,
+    targets: input.evidence.targets,
+    query: input.query,
+  });
+  const architectureAsk = isArchitecturePlanningAsk(input);
+  const repair = isRepairIntent(input) && !architectureAsk;
+
+  // Architecture / package redesign must discover — incidental diagnostics
+  // must not collapse the strategy to follow_evidence.
+  if (architectureAsk && hasWideScope(input)) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "discover_and_plan",
+        rationale:
+          "Architecture-scale ask requires discovery before drafting; diagnostics annotate Verify only.",
+        skipDiscover: false,
+        // Annotate Change/Verify with in-scope errors — never drive strategy.
+        useBuildEvidence: inScopeErrorCount >= 1,
+        confidence: 0.9,
+      },
+      input,
+    );
+  }
+
+  if (repair && inScopeErrorCount >= 1) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "follow_evidence",
+        rationale: "In-scope preflight diagnostics match a repair ask.",
+        skipDiscover: true,
+        useBuildEvidence: true,
+        confidence: 0.95,
+      },
+      input,
+    );
+  }
+
+  // "fix all ts errors in this package" must not fall through to discovery
+  // just because the first snapshot had empty or project-relative paths.
+  if (repair && isBroadPackageRepair(input)) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "follow_evidence",
+        rationale:
+          "Broad package repair should drive remaining diagnostics to zero, not rediscover.",
+        skipDiscover: true,
+        useBuildEvidence: inScopeErrorCount >= 1 || hasAnyErrorDiagnostics(input),
+        confidence: 0.85,
+      },
+      input,
+    );
+  }
+
+  if (input.explorationDepth === "quick") {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "plan_from_ask",
+        rationale: "Quick exploration depth plans directly from the ask.",
+        skipDiscover: true,
+        useBuildEvidence: false,
+      },
+      input,
+    );
+  }
+
+  // Medium / large: always bounded discovery before drafting (seed-first
+  // Engine pass). Known write paths still get local inspection — never skip.
+  if (isMediumOrLargerTask(input)) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "discover_and_plan",
+        rationale:
+          input.evidence.taskSize === "large"
+            ? "Large task requires bounded discovery before a concrete implementation plan."
+            : "Medium task requires bounded discovery before a concrete implementation plan.",
+        skipDiscover: false,
+        useBuildEvidence: inScopeErrorCount >= 1,
+        confidence: 0.88,
+      },
+      input,
+    );
+  }
+
+  // Deep always rediscovers. Auto may skip discovery for small tasks when
+  // Engine already supplied concrete file paths — avoid README wander.
+  if (
+    input.explorationDepth !== "deep" &&
+    hasKnownFileSurfaces(input) &&
+    !repair &&
+    !architectureAsk
+  ) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "plan_from_ask",
+        rationale:
+          "Known file surfaces from context or prior turns are enough to draft without rediscovery.",
+        skipDiscover: true,
+        useBuildEvidence: false,
+        confidence: 0.8,
+      },
+      input,
+    );
+  }
+
+  if (hasWideScope(input)) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "discover_and_plan",
+        rationale: "Scope or complexity benefits from discovery before mutation.",
+        skipDiscover: false,
+        useBuildEvidence: false,
+      },
+      input,
+    );
+  }
+
+  return sanitizeStrategy(
+    {
+      schemaVersion: 1,
+      strategy: "plan_from_ask",
+      rationale: "Request is concrete enough to draft from the ask.",
+      skipDiscover: true,
+      useBuildEvidence: false,
+    },
+    input,
+  );
+}
+
+/** Officer medium/large bands must not short-circuit to plan_from_ask. */
+export function isMediumOrLargerTask(input: PlanningParsedInput): boolean {
+  const size = input.evidence.taskSize;
+  return size === "medium" || size === "large";
+}
+
+function hasKnownFileSurfaces(input: PlanningParsedInput): boolean {
+  const hints = (input.knownPathHints ?? []).filter(
+    (path) => path.trim().length > 0 && /\.\w{1,16}$/.test(path.trim()),
+  );
+  if (hints.length >= 1) {
+    return true;
+  }
+  return input.evidence.targets.some(
+    (target) =>
+      target.explicit &&
+      (target.kind === "file" ||
+        target.kind === "config" ||
+        target.kind === "test" ||
+        /\.\w{1,16}$/.test(target.value)),
+  );
+}
+
+export function sanitizeStrategy(
+  decision: PlanStrategyDecision,
+  input: PlanningParsedInput,
+): PlanStrategyDecision {
+  const inScopeErrors = countInScopeErrorDiagnostics({
+    buildEvidence: input.buildEvidence,
+    targets: input.evidence.targets,
+    query: input.query,
+  });
+  const hasBuildDiagnostics = (input.buildEvidence?.diagnostics?.length ?? 0) > 0;
+
+  if (decision.strategy === "clarify") {
+    return {
+      ...decision,
+      skipDiscover: true,
+      useBuildEvidence: false,
+    };
+  }
+
+  if (decision.strategy === "follow_evidence") {
+    return {
+      ...decision,
+      skipDiscover: true,
+      useBuildEvidence: inScopeErrors > 0 || hasAnyErrorDiagnostics(input),
+    };
+  }
+
+  if (!hasBuildDiagnostics || inScopeErrors === 0) {
+    return {
+      ...decision,
+      useBuildEvidence: false,
+    };
+  }
+
+  return {
+    ...decision,
+    useBuildEvidence:
+      decision.strategy === "discover_and_plan" ? decision.useBuildEvidence : false,
+  };
+}
+
+function isBroadPackageRepair(input: PlanningParsedInput): boolean {
+  return (
+    hasWideScope(input) &&
+    (DECISION_POLICY_PATTERNS.broadRepairRequest.test(input.query) ||
+      input.evidence.recommendsVerification === true)
+  );
+}
+
+function hasAnyErrorDiagnostics(input: PlanningParsedInput): boolean {
+  return (input.buildEvidence?.diagnostics ?? []).some(
+    (diagnostic) => diagnostic.severity === "error",
+  );
+}
+
+function hasWideScope(input: PlanningParsedInput): boolean {
+  return (
+    input.evidence.scope === "package" ||
+    input.evidence.scope === "repository" ||
+    input.evidence.scope === "workspace" ||
+    input.evidence.scope === "multi_file" ||
+    input.evidence.complexity === "complex" ||
+    input.evidence.complexity === "very_complex" ||
+    input.evidence.recommendsPlanning === true
+  );
+}
+
+/**
+ * Architecture-scale planning ask: refactor/migrate/scaffold on wide scope,
+ * or explicit architecture / POM / restructure language.
+ */
+export function isArchitecturePlanningAsk(input: PlanningParsedInput): boolean {
+  const intents = [
+    input.evidence.primaryIntent,
+    ...input.evidence.secondaryIntents,
+  ];
+  if (isArchitectureIntentTaxonomy(intents) && hasWideScope(input)) {
+    return true;
+  }
+  if (
+    hasWideScope(input) &&
+    /\b(?:architecture|restructure|reorganiz(?:e|ation)|page\s*objects?|\bpom\b|shared\s+base|cross-?platform)\b/i.test(
+      input.query,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Thin wrapper over the shared decision-policy repair-intent predicate. */
+export function isRepairIntent(input: PlanningParsedInput): boolean {
+  return isRepairIntentTaxonomy([
+    input.evidence.primaryIntent,
+    ...input.evidence.secondaryIntents,
+  ]);
+}
+
+function hasOutOfScopeBuildEvidence(
+  input: PlanningParsedInput,
+  decision: PlanStrategyDecision,
+): boolean {
+  return (
+    decision.useBuildEvidence === false &&
+    (input.buildEvidence?.diagnostics?.some(
+      (diagnostic) => diagnostic.severity === "error",
+    ) ?? false)
+  );
+}
+
+function strategyReasonCode(
+  strategy: PlanStrategyDecision["strategy"],
+): PlanningReasonCode {
+  return `plan_strategy_${strategy}` as PlanningReasonCode;
+}

@@ -11,26 +11,19 @@ import type {
   WorkspaceSnapshot,
 } from "../../repository-state/index";
 
-import type {
-  ContextAssemblyInput,
-  ContextAssemblyResult,
-} from "../internal/context-assembly/types";
+import type { ContextAssemblyResult } from "../helpers/context-assembly/types";
 
 import type {
   ContextSelectionBreadth,
   ContextSelectionBudget,
-  ContextSelectionInput,
   ContextSelectionReferences,
   ContextSelectionResult,
-} from "../internal/context-selection/types";
+} from "../helpers/context-selection/types";
 
 /** Public selection budget contract (owned by repository-context). */
 export type { ContextSelectionBudget };
 
-import type {
-  HybridRetrievalInput,
-  HybridRetrievalResult,
-} from "../internal/hybrid-retrieval/types";
+import type { HybridRetrievalResult } from "../helpers/hybrid-retrieval/types";
 
 /**
  * Artifacts bound to one published repository state.
@@ -65,12 +58,6 @@ export type RepositoryContextStateResolveResult =
       message: string;
       descriptor: RepositoryStateDescriptor;
     };
-
-export interface RepositoryContextStateResolverPort {
-  resolve(
-    reference: RepositoryStateReference,
-  ): Promise<RepositoryContextStateResolveResult>;
-}
 
 export interface RepositoryContextPipelineInput {
   state: RepositoryStateReference;
@@ -136,27 +123,12 @@ export interface RepositoryContextPipelineResult {
   statistics: RepositoryContextPipelineStatistics;
 }
 
-export interface RepositoryContextRetrieverPort {
-  retrieve(
-    input: HybridRetrievalInput,
-  ): Promise<HybridRetrievalResult>;
-}
-
-export interface RepositoryContextSelectorPort {
-  select(
-    input: ContextSelectionInput,
-  ): ContextSelectionResult;
-}
-
-export interface RepositoryContextAssemblerPort {
-  assemble(
-    input: ContextAssemblyInput,
-  ): Promise<ContextAssemblyResult>;
-}
-
-export interface RepositoryContextPipelineDependencies {
-  stateResolver: RepositoryContextStateResolverPort;
-  retriever: RepositoryContextRetrieverPort;
-  selector: RepositoryContextSelectorPort;
-  assembler: RepositoryContextAssemblerPort;
-}
+export type {
+  RepositoryContextStateResolverPort,
+  RepositoryContextRetrieverPort,
+  RepositoryContextSelectorPort,
+  RepositoryContextAssemblerPort,
+  RepositoryContextPipelineDependencies,
+} from "../ports/RepositoryContextPorts";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";

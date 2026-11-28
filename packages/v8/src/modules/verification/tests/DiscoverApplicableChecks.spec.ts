@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { InMemoryManifestReader } from "..";
-import { discoverApplicableChecks } from "../actions/DiscoverApplicableChecks";
+import { discoverApplicableChecks } from "../flow/steps/2-discover-checks";
 
 const PACKAGE_JSON = JSON.stringify({
   name: "mui-builder",

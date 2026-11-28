@@ -4,40 +4,40 @@
 export { InMemoryRepositoryStateStore } from "./InMemoryRepositoryStateStore";
 export {
   InMemoryFileSystemAdapter,
-} from "../internal/shared/filesystem/InMemoryFileSystemAdapter";
+} from "../helpers/shared/filesystem/InMemoryFileSystemAdapter";
 export {
   NodeFileSystemAdapter,
-} from "../internal/shared/filesystem/NodeFileSystemAdapter";
+} from "../helpers/shared/filesystem/NodeFileSystemAdapter";
 export {
   CharacterTokenEstimator,
-} from "../internal/chunking/CharacterTokenEstimator";
+} from "../helpers/chunking/CharacterTokenEstimator";
 export {
   TextSearchService,
-} from "../internal/text-index/TextSearchService";
+} from "../helpers/text-index/TextSearchService";
 export {
   SqliteTextIndexFactory,
-} from "../internal/text-index/adapters/sqlite/SqliteTextIndexFactory";
+} from "../helpers/text-index/adapters/sqlite/SqliteTextIndexFactory";
 export {
   SqliteCodeIndexAdapter,
-} from "../internal/code-index/adapters/sqlite/SqliteCodeIndexAdapter";
+} from "../helpers/code-index/adapters/sqlite/SqliteCodeIndexAdapter";
 export {
   createDefaultProjectCatalogBuilder,
-} from "../internal/catalog/DefaultProjectCatalogBuilder";
+} from "../helpers/catalog/DefaultProjectCatalogBuilder";
 export {
   RepoGraphBuilder,
-} from "../internal/repo-graph/RepoGraphBuilder";
+} from "../helpers/repo-graph/RepoGraphBuilder";
 export {
   RepoMapBuilder,
-} from "../internal/repo-map/RepoMapBuilder";
+} from "../helpers/repo-map/RepoMapBuilder";
 export {
   RepoMapRanker,
-} from "../internal/repo-map/ranking/RepoMapRanker";
+} from "../helpers/repo-map/ranking/RepoMapRanker";
 export {
   VectorSearchService,
-} from "../internal/vector-index/VectorSearchService";
+} from "../helpers/vector-index/VectorSearchService";
 export {
   EmbeddingVectorValidator,
-} from "../internal/embedding/EmbeddingVectorValidator";
+} from "../helpers/embedding/EmbeddingVectorValidator";
 export {
   WorkspaceIndexingAdapterFactory,
 } from "./WorkspaceIndexingAdapterFactory";

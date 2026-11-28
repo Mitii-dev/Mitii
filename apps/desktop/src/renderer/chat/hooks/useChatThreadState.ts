@@ -44,6 +44,10 @@ export function useChatThreadState() {
     ReadonlySet<string>
   >(() => new Set());
 
+  const [pendingNextActionPrompt, setPendingNextActionPrompt] = useState<
+    string | null
+  >(null);
+
   const [reviewFindings, setReviewFindings] = useState<ReviewFinding[]>([]);
 
   const [reviewDismissed, setReviewDismissed] = useState(false);
@@ -78,6 +82,7 @@ export function useChatThreadState() {
     setPendingPlanStrategy,
     setPendingTaskList,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     setTokenUsage,
     setSuspension,
     threadId,
@@ -94,6 +99,7 @@ export function useChatThreadState() {
     pendingPlanStrategy,
     pendingTaskList,
     completedPlanStepIds,
+    pendingNextActionPrompt,
     reviewDismissed,
     reviewFindings,
     feedRef,

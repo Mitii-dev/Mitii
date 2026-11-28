@@ -5,12 +5,12 @@
  * Free functions stay exported for engine/SDK during the rewrite.
  */
 
-export { McpAttachPipeline } from "./pipeline/McpAttachPipeline";
+export { McpAttachPipeline } from "./flow/McpAttachPipeline";
 export type {
   McpAttachPipelineDependencies,
   ResolveAttachListInput,
   ResolveAttachListResult,
-} from "./pipeline/McpAttachPipeline";
+} from "./flow/McpAttachPipeline";
 
 export {
   MAX_REQUIRED_MCP_SERVERS,
@@ -30,8 +30,8 @@ export {
   filterToolsByMcpAttach,
   withMcpAttachOnGrant,
   formatMcpAttachInstruction,
-} from "./actions";
-export type { ParseRequiredMcpMentionsResult } from "./actions";
+} from "./flow/steps";
+export type { ParseRequiredMcpMentionsResult } from "./flow/steps";
 
 export {
   mcpAttachInstructionSchema,

@@ -1,7 +1,10 @@
 import type { SkillDescriptor, SkillsCatalogPort } from "../contracts";
+import { inMemoryCatalogList } from "./catalog/list";
+import { inMemoryCatalogLoadBody } from "./catalog/load-body";
 
 /**
  * In-process skill catalog for tests and single-process hosts.
+ * Port method bodies: flat `impl/catalog-*.ts` (same style as `flow/`).
  */
 export class InMemorySkillsCatalog implements SkillsCatalogPort {
   private readonly skills: SkillDescriptor[];
@@ -11,18 +14,11 @@ export class InMemorySkillsCatalog implements SkillsCatalogPort {
   }
 
   public list(): readonly SkillDescriptor[] {
-    return this.skills;
+    return inMemoryCatalogList(this.skills);
   }
 
   public loadBody(id: string) {
-    const skill = this.skills.find((entry) => entry.id === id);
-    if (!skill) {
-      return undefined;
-    }
-    return {
-      content: skill.content,
-      resources: skill.resources,
-    };
+    return inMemoryCatalogLoadBody(this.skills, id);
   }
 
   public replace(skills: readonly SkillDescriptor[]): void {

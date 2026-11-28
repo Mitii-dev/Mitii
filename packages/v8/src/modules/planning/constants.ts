@@ -3,6 +3,39 @@
  */
 export const PLANNING_SCHEMA_VERSION = 1 as const;
 
+export const PLANNING_MESSAGES = {
+  inputInvalid: "Planning input failed schema validation.",
+} as const;
+
+/**
+ * Named accessors for frequently logged reason codes.
+ * Full catalog remains {@link PLANNING_REASON_CODES}.
+ */
+export const PLANNING_REASON = {
+  drafted: "plan_drafted",
+  depthNone: "plan_depth_none",
+  draftedFromDiscovery: "plan_drafted_from_discovery",
+  discoveryDraftFailed: "plan_discovery_draft_failed_fallback",
+  clarifyDrafted: "plan_clarify_drafted",
+  blockedInvalid: "plan_blocked_invalid",
+} as const;
+
+/** Ordered flow stage names (plan path + logger). */
+export const PLANNING_STAGES = {
+  resolveStrategy: "1-resolve-strategy",
+  draftSkeleton: "2-draft-skeleton",
+  applyDiscoveryDraft: "3-apply-discovery-draft",
+  enforceDiscoveryQuality: "4-enforce-discovery-quality",
+  draftClarify: "5-draft-clarify",
+  validatePlan: "6-validate-plan",
+  applyWorkingSets: "7-apply-working-sets",
+  compactPlan: "8-compact-plan",
+  finalizeResult: "9-finalize-result",
+} as const;
+
+export type PlanningStageName =
+  (typeof PLANNING_STAGES)[keyof typeof PLANNING_STAGES];
+
 export const PLANNING_STATUSES = [
   "drafted",
   "validated",
@@ -76,6 +109,7 @@ export const PLANNING_REASON_CODES = [
   "plan_working_set_empty",
   "plan_strategy_known_paths",
   "plan_strategy_medium_bounded_discover",
+  "plan_strategy_plan_mode_defers_unclear",
   "plan_steps_concrete",
   "plan_steps_missing_targets",
   "plan_steps_vague_targets",

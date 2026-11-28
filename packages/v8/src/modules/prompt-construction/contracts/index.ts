@@ -49,4 +49,6 @@ export {
 } from "./errors/PromptConstructionErrors";
 export type { PromptConstructionErrorCode } from "./errors/PromptConstructionErrors";
 
-export type { TokenEstimatorPort } from "./ports/TokenEstimatorPort";
+export type { TokenEstimatorPort } from "../ports/TokenEstimatorPort";
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

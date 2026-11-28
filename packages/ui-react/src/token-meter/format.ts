@@ -3,30 +3,32 @@ import type {
   TokenMeterUsage,
 } from './types.js';
 
+/** Distinct enterprise palette for context sections (bar + legend). */
 const CONTEXT_SLICE_COLORS: Record<string, string> = {
-  output: '#9a6b6b',
-  tools: '#777189',
-  usable: '#5f6b77',
-  repository: '#71806f',
-  conversation: '#64748b',
-  plan: '#6f8794',
-  skills: '#8b7d6b',
-  system: '#7c8794',
-  free: '#9aa6b2',
-  prompt: '#7c8794',
-  pinned: '#8b949e',
-  memory: '#6b7280',
-  rules: '#7c8794',
-  editor: '#707b87',
-  diagnostics: '#9a6b6b',
-  gitDiff: '#6f8794',
-  repoMap: '#71806f',
-  mcp: '#777189',
-  depth: '#9aa6b2',
-  runtime: '#5f6b77',
+  system: '#64748b',
+  rules: '#0f766e',
+  skills: '#c2410c',
+  memory: '#7c3aed',
+  tools: '#4f46e5',
+  conversation: '#e11d48',
+  repository: '#059669',
+  plan: '#0284c8',
+  output: '#94a3b8',
+  output_reserve: '#94a3b8',
+  usable: '#475569',
+  free: '#cbd5e1',
+  prompt: '#64748b',
+  pinned: '#0ea5e9',
+  editor: '#6366f1',
+  diagnostics: '#b91c1c',
+  gitDiff: '#0d9488',
+  repoMap: '#15803d',
+  mcp: '#9333ea',
+  depth: '#64748b',
+  runtime: '#334155',
 };
 
-const FALLBACK_SLICE_COLOR = '#8da2fb';
+const FALLBACK_SLICE_COLOR = '#64748b';
 
 export function contextSliceColor(id: string): string {
   return CONTEXT_SLICE_COLORS[id] ?? FALLBACK_SLICE_COLOR;

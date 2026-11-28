@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.11.29",
+  "version": "2.11.59",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -1570,15 +1570,15 @@
         },
         "mitii.safety.sandbox.backend": {
           "type": "string",
+          "default": "auto",
+          "description": "Preferred sandbox backend. auto picks seatbelt (macOS), bubblewrap (Linux), or docker/podman (Windows). Explicit seatbelt/bubblewrap fail closed when unavailable.",
           "enum": [
             "auto",
             "seatbelt",
             "bubblewrap",
             "docker",
             "podman"
-          ],
-          "default": "auto",
-          "description": "Preferred sandbox backend. auto picks seatbelt (macOS) or bubblewrap (Linux)."
+          ]
         },
         "mitii.tools.applyPatch.fuzzyMatch": {
           "type": "boolean",
@@ -1733,6 +1733,15 @@
           "minimum": 0,
           "maximum": 8,
           "description": "Recovery attempts when a structured review ends without findings (0 disables)."
+        },
+        "mitii.safety.sandbox.lifecycle": {
+          "type": "string",
+          "default": "ephemeral",
+          "description": "Process sandbox lifecycle. ephemeral wraps each command; session keeps one docker/podman container for the run (call dispose when the run ends).",
+          "enum": [
+            "ephemeral",
+            "session"
+          ]
         }
       }
     }

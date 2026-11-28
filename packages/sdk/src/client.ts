@@ -16,6 +16,8 @@ import type {
   PublishRepositoryStateResult,
   RepositoryContextPipeline,
   RepositoryStatePipeline as RepositoryStatePipelineType,
+  RuntimePipeline,
+  RuntimeRunResult,
   SkillsCatalogPort,
   ToolRuntimePipeline,
   VerificationPipeline,
@@ -96,6 +98,18 @@ export interface CreateMitiiClientOptions {
   /** Restrict-only ToolAdversaryPort. Default unset = no-op. */
   adversary?: ToolAdversaryPort;
   adversaryFailMode?: AdversaryFailMode;
+  /**
+   * Expose `startRuntimeShell` + allow `startPath: 'runtime'|'auto'`.
+   * Default **true** (dual-run always composed).
+   */
+  enableRuntimeShell?: boolean;
+  /**
+   * Which path `start()` / matching `resume()` uses:
+   * - `engine` — **deprecated escape** raw event-bus (full mutate parity)
+   * - `runtime` — shell pump via V8 `wrapEngineWithRuntimeShell`
+   * - `auto` (default) — all modes → runtime shell
+   */
+  startPath?: 'engine' | 'runtime' | 'auto';
 }
 
 /**
@@ -103,8 +117,15 @@ export interface CreateMitiiClientOptions {
  * Secrets (API keys) stay on injected LlmPort adapters — never on this options bag.
  */
 export class MitiiClient {
-  private readonly engine: MitiiAgentEngine;
+  /** Runtime-shell wrap (V8 P8 bridge) — default start/resume path. */
+  private readonly shellEngine: MitiiAgentEngine;
+  /** Raw event-bus — restore only (`start`/`resume` sealed on product surface). */
+  private readonly eventBusEngine: MitiiAgentEngine;
+  private readonly runtime: RuntimePipeline;
   private readonly engineImplementation: V8EngineImplementation;
+  private readonly enableRuntimeShell: boolean;
+  /** Retained for option compat; `'engine'` is ignored (hard-deleted). */
+  private readonly startPath: 'engine' | 'runtime' | 'auto';
   private readonly defaults: {
     mode: AgentMode;
     sessionId: string;
@@ -151,10 +172,17 @@ export class MitiiClient {
       taskListAutoAdvance: options.taskListAutoAdvance,
       adversary: options.adversary,
       adversaryFailMode: options.adversaryFailMode,
+      workspaceRoot: options.workspaceRoot,
+      workspaceId: options.workspaceId,
       implementation: parseV8EngineImplementation(options.engineImplementation),
+      preferRuntimeShell: true,
     });
-    this.engine = composed.engine;
+    this.shellEngine = composed.engine;
+    this.eventBusEngine = composed.eventBusEngine;
+    this.runtime = composed.runtime;
     this.engineImplementation = composed.implementation;
+    this.enableRuntimeShell = options.enableRuntimeShell !== false;
+    this.startPath = options.startPath ?? 'auto';
 
     this.repositoryState = repositoryState;
     this.defaults = {
@@ -171,24 +199,67 @@ export class MitiiClient {
   }
 
   /**
-   * Start a run. Returns an opaque handle with events + terminal result.
+   * Start a run. Path follows `startPath` (default `auto`:
+   * all modes → V8 runtime-shell wrap; `engine` = deprecated event-bus escape).
    */
   start(input: MitiiStartInput): MitiiRun {
     try {
       const engineInput = toAgentEngineStartInput(input, this.defaults);
-      return new MitiiRun(this.engine.start(engineInput));
+      const surface = this.shouldUseRuntimeStart()
+        ? this.shellEngine
+        : this.eventBusEngine;
+      return new MitiiRun(surface.start(engineInput));
     } catch (error) {
       throw mapToSdkError(error);
     }
   }
 
   /**
+   * Explicit runtime shell start (pump 1–11). Requires enableRuntimeShell.
+   */
+  async startRuntimeShell(input: MitiiStartInput): Promise<RuntimeRunResult> {
+    if (!this.enableRuntimeShell) {
+      throw new MitiiSdkError(
+        'invalid_input',
+        'startRuntimeShell requires createMitiiClient({ enableRuntimeShell: true }).',
+      );
+    }
+    try {
+      const engineInput = toAgentEngineStartInput(input, this.defaults);
+      return await this.runtime.start(engineInput);
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+
+  /** Dual-run RuntimePipeline (always composed). */
+  getRuntime(): RuntimePipeline {
+    return this.runtime;
+  }
+
+  /** Which start() path is active for a mode under current settings. */
+  resolveStartPath(mode?: AgentMode): 'engine' | 'runtime' {
+    return this.shouldUseRuntimeStart(mode) ? 'runtime' : 'engine';
+  }
+
+  private shouldUseRuntimeStart(_mode?: AgentMode): boolean {
+    if (!this.enableRuntimeShell) return false;
+    // `startPath: 'engine'` hard-deleted — always shell when enabled.
+    void this.startPath;
+    return true;
+  }
+
+  /**
    * Resume after clarification_required or approval_required suspension.
+   * Shell wrap owns session carry; event-bus used only for `startPath: 'engine'`.
    */
   resume(input: MitiiResumeInput): MitiiRun {
     try {
       const parsed = mitiiResumeInputSchema.parse(input);
-      return new MitiiRun(this.engine.resume(parsed));
+      const surface = this.shouldUseRuntimeStart()
+        ? this.shellEngine
+        : this.eventBusEngine;
+      return new MitiiRun(surface.resume(parsed));
     } catch (error) {
       throw mapToSdkError(error);
     }
@@ -200,7 +271,7 @@ export class MitiiClient {
    */
   async restore(input: MitiiRestoreInput) {
     try {
-      return await this.engine.restore(input);
+      return await this.eventBusEngine.restore(input);
     } catch (error) {
       throw mapToSdkError(error);
     }
@@ -209,7 +280,7 @@ export class MitiiClient {
   /** List durable restore points for a run (oldest → newest). */
   async listRestorePoints(runId: string): Promise<import('@mitii/v8').RestorePointSummary[]> {
     try {
-      return await this.engine.listRestorePoints(runId);
+      return await this.eventBusEngine.listRestorePoints(runId);
     } catch (error) {
       throw mapToSdkError(error);
     }

@@ -80,12 +80,62 @@ export function planStepStatusFromTask(
   }
 }
 
+/** Follow strip from a durable execution checklist (no PlanArtifact needed). */
+export function taskListToFollowView(
+  taskList: TaskList | null | undefined,
+): PlanFollowView | null {
+  if (!taskList?.items?.length) return null;
+  if (taskList.purpose === 'discovery' || taskList.source === 'discovery') {
+    return null;
+  }
+  const steps = taskList.items.slice(0, 24).map((item) => ({
+    id: item.id,
+    title: item.title,
+    status: planStepStatusFromTask(item.status),
+    ...(item.detail ? { detail: item.detail } : {}),
+  }));
+  return {
+    objective: taskList.title ?? 'Campaign checklist',
+    title: (taskList.title ?? 'Campaign checklist').slice(0, 120),
+    steps,
+  };
+}
+
+/** Invented desks must not own the strip — LLM steps or nothing. */
+function isWeakSeededTaskList(taskList: TaskList | null | undefined): boolean {
+  if (!taskList?.items?.length) return false;
+  if (taskList.source === 'plan') return false;
+  if (taskList.items.length === 1) {
+    const title = taskList.items[0]?.title?.trim() ?? '';
+    return /…$|\.\.\.$/.test(title) || /^complete requested work$/i.test(title);
+  }
+  if (taskList.items.length !== 2) return false;
+  const second = taskList.items[1]?.title?.trim().toLowerCase() ?? '';
+  return second === 'verify and finish remaining work';
+}
+
+function isVerifyRepairTaskList(taskList: TaskList | null | undefined): boolean {
+  if (!taskList?.items?.length) return false;
+  if (taskList.title === 'Verification repair') return true;
+  const ids = new Set(taskList.items.map((item) => item.id));
+  return ids.has('repair_fix') && ids.has('repair_reverify');
+}
+
 export function planArtifactToFollowView(
   plan: PlanArtifact | null,
   running: boolean,
   taskList?: TaskList | null,
   completedPlanStepIds?: ReadonlySet<string>,
 ): PlanFollowView | null {
+  // Verify-repair is an interrupt — keep showing campaign plan phases so the
+  // user still understands the real roadmap (not only Fix → Re-verify).
+  if (isVerifyRepairTaskList(taskList) && plan) {
+    // fall through to plan artifact steps below
+  } else {
+    // Real LLM / plan desk only. Weak invents yield; never fake a one-liner.
+    const deskView = taskListToFollowView(taskList);
+    if (deskView && !isWeakSeededTaskList(taskList)) return deskView;
+  }
   if (!plan) return null;
   const steps: NonNullable<PlanFollowView['steps']> = [];
   for (const phase of plan.phases) {
@@ -109,14 +159,8 @@ export function planArtifactToFollowView(
     }
     if (steps.length >= 24) break;
   }
-  if (steps.length === 0) {
-    steps.push({
-      id: 'objective',
-      title: plan.objective,
-      status: 'pending',
-    });
-  }
-  // Only invent "step 1 active" when the task list has no active/done signal yet.
+  // No structured steps → no strip. Build banner covers "execute the plan".
+  if (steps.length === 0) return null;
   const hasProgress = steps.some(
     (step) => step.status === 'active' || step.status === 'done',
   );

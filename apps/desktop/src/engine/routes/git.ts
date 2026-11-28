@@ -63,11 +63,29 @@ async function handlePostGitFileChanges(ctx: RouteContext): Promise<void> {
   const { req, res, token, cwd } = ctx;
   if (!requireAuth(req, res, token)) return;
   try {
-    const body = (await readJsonBody(req)) as { paths?: unknown };
+    const body = (await readJsonBody(req)) as {
+      paths?: unknown;
+      beforePaths?: unknown;
+      sinceMs?: unknown;
+    };
     const paths = Array.isArray(body.paths)
       ? body.paths.filter((p): p is string => typeof p === 'string')
       : [];
-    sendJson(res, 200, await getGitFileChangesSummary(cwd, paths));
+    const beforePaths = Array.isArray(body.beforePaths)
+      ? body.beforePaths.filter((p): p is string => typeof p === 'string')
+      : undefined;
+    const sinceMs =
+      typeof body.sinceMs === 'number' && Number.isFinite(body.sinceMs)
+        ? body.sinceMs
+        : undefined;
+    sendJson(
+      res,
+      200,
+      await getGitFileChangesSummary(cwd, paths, {
+        ...(beforePaths ? { beforePaths } : {}),
+        ...(typeof sinceMs === 'number' ? { sinceMs } : {}),
+      }),
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : String(error);

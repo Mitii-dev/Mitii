@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatEffectiveGrant,
   formatEffectiveGrantJson,
-} from "../../actions/FormatEffectiveGrant";
+} from "../../helpers/FormatEffectiveGrant";
 import type { ToolGrant } from "../../contracts";
 
 const grant: ToolGrant = {

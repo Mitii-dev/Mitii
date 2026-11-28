@@ -1,139 +1,54 @@
 # Skills
 
-Skills selects relevant instruction blocks from a skill catalog. It helps the model follow task-specific playbooks without letting skills grant tools, scan the repository, or override policy.
+A librarian for playbooks: it picks the few skill instructions that fit this request and fit the budget.
 
-## Related product docs
+## Does
+- Resolves required and preferred skills, and matches others from the request, route, mode, and repository evidence.
+- Parses skill mentions and maps understanding/repository evidence into match signals.
+- Merges candidates, resolves conflicts, then packs skills under the token budget.
+- Formats prompt-ready instruction text.
 
-- Bundled skill pack: [`packages/sdk/skills/`](../../../../sdk/skills/README.md)
-- Skill files: [`packages/sdk/skills/`](../../../../../sdk/skills/) (`SKILL.md` per skill)
-- Host catalog + writing recipes: `@mitii/host` (`createFileSystemSkillsCatalog`, `buildWritingRecipeAsk`)
-- CLI recipes: [`apps/cli/README.md`](../../../../../apps/cli/README.md)
+## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-## What This Module Does
+**Input:** `SkillsSelectInput` (`query`, `mode`, `route`, `evidence`, `requiredSkillIds`, `preferredSkillIds`, `budgetTokens`, `maxSkills`).
+**Output:** `SkillsSelectResult` (`status` selected | empty, `instructions`, `omissions`, `reasonCodes`, `usedTokens`).
+**Pipeline:** `SkillsPipeline` stages: `1-resolve-required` → `2-resolve-preferred` → `3-match-skills` → `4-merge-candidates` → `5-resolve-conflicts` → `6-apply-budget` (plus helper steps for mentions, evidence mapping, and prompt formatting)
+**Ports we offer / need:** needs `SkillsCatalogPort` (list skills, optionally load bodies); optional `SkillSimilarityPort` and `ModuleLoggerPort`. Adapters fulfill them (`InMemorySkillsCatalog`, `KeywordSkillSimilarity`).
 
-- Loads skill metadata from a catalog.
-- Matches skills against query, route, mode, and slim task evidence.
-- Applies keyword/similarity scoring.
-- Resolves conflict groups.
-- Hydrates selected skill bodies.
-- Enforces a dedicated token budget with rank-preserving packing.
-- Prefers a compact L1 body when the full playbook does not fit.
-- Optionally returns a name+description `catalogL1` slice when
-  `includeCatalogL1` is set (for PC awareness inject; default off).
-- Returns prompt-ready instruction blocks with provenance.
+## Dependencies
+**Upstream (this module uses):** decision-policy, repository-state, request-intake, request-understanding (types and evidence).
+**Downstream (who uses this):** the engine (skill selection during start enrichment); planning receives the selected skills through the engine.
 
-## Structure
+## How to use
+```ts
+import { SkillsPipeline, InMemorySkillsCatalog } from "@mitii/v8/modules/skills";
 
-```text
-skills/
-  pipeline/                 SkillsPipeline
-  actions/                  Match, conflict resolution, budgeting
-  adapters/                 InMemorySkillsCatalog
-  contracts/
-    input/                  SkillsSelectInput
-    output/                 SkillDescriptor, SkillsSelectResult
-    ports/                  SkillsCatalogPort, SkillSimilarityPort
-    errors/                 SkillsErrors
-  tests/
+const skills = new SkillsPipeline({ catalog: new InMemorySkillsCatalog(entries) });
+const result = await skills.select(input);
 ```
 
-## Types And Contracts
-
-- `SkillsSelectInput`: query, mode, route, task evidence, budget, max skill count, optional `requiredSkillIds`, soft `preferredSkillIds` (Engine size/route boost; missing ids ignored), and optional `includeCatalogL1`.
-- `SkillTaskEvidence`: primary intent, secondary intents, scope, complexity, risk, recommendations, paths, tags, languages, and project kinds.
-- `SkillDescriptor`: skill metadata plus body.
-- `SkillInstructionBlock`: prompt-ready instruction content with provenance.
-- `SkillsSelectResult`: status, instructions, optional `catalogL1`, omissions, token usage, warnings, reason codes, and duration.
-
-## Technical Details
-
-- The public facade method is `SkillsPipeline.select`.
-- `InMemorySkillsCatalog` is useful for tests or simple hosts.
-- `KeywordSkillSimilarity` is the default similarity implementation.
-- Skills can provide resource references/scripts as metadata, but selection does not execute them.
-- Repository paths/languages only gate or boost; Skills never scans files.
-- Budget packing walks the ranked list in order. A higher-ranked skill is never
-  dropped solely so a smaller later skill can take its slot. When the hydrated
-  playbook exceeds the remaining budget, Skills injects the distinct compact
-  catalog body (and may truncate that compact body) before omitting.
-- Hosts that list skills in `metadata` mode still hydrate full playbooks through
-  `loadBody`. Compact fallback is what keeps oversized playbooks from evicting
-  the skill the ranker selected.
-- Agent Engine maps `bugfix` / `diagnose` understanding into recommended skill
-  tags `localize` and `fix` (plus any tags already on `taskHints`). Skills does
-  not own that mapping; it only consumes `SkillTaskEvidence`.
-
-## Ownership Boundaries
-
-Owns skill selection, scoring, conflict handling, budgeting, omissions, and instruction block output.
-
-Does not own skill execution, policy grants, prompt section budgeting, repository retrieval, or model calls.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/skills
-```
-
-## Example Flow
-
-This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
-
-### Real Prompt
-
-```text
-I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
-```
-
-### Real Input Structure
-
-SkillsSelectInput -> SkillsSelectResult:
-
-```json
-{
-  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
-  "workspaceId": "workspace-1",
-  "stateToken": "state-abc",
-  "targetFile": "src/LoginForm.tsx"
-}
-```
-
-### Step-By-Step Flow
-
-1. A user sends the real prompt shown above from an editor or chat host.
-2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
-3. The module receives the real structure shown in the input block.
-4. The module validates schema/version/limits before doing any work.
-5. The module extracts the important target: `src/LoginForm.tsx`.
-6. The module keeps the user constraint: existing validation and error handling must stay intact.
-7. The module performs only its own responsibility and does not cross into neighboring modules.
-8. Any budget, path, state, or provider constraint is applied before output is produced.
-9. The module records warnings/reason codes instead of hiding degraded behavior.
-10. The module returns the realistic output shape shown below.
-11. The next pipeline stage consumes that output without reinterpreting raw user text.
-
-### Realistic Output
-
-Skills selection result returns a result like this:
-
+## Example
+Input:
 ```json
 {
   "schemaVersion": 1,
-  "status": "selected",
-  "instructions": [
-    {
-      "id": "react-form-state",
-      "title": "React form pending state",
-      "content": "Prefer existing component patterns. Disable submit controls while async submit is pending. Keep validation paths intact.",
-      "priority": 80,
-      "provenance": { "skillId": "react-form-state", "source": "skills", "score": 0.91 }
-    }
-  ],
-  "omissions": [],
-  "usedTokens": 72,
-  "budgetTokens": 1200,
-  "warnings": [],
-  "reasonCodes": ["skills_selected"],
-  "durationMs": 8
+  "query": "Fix null crash in LoginForm",
+  "mode": "agent",
+  "route": "diagnose",
+  "budgetTokens": 2000,
+  "evidence": { "primaryIntent": "bugfix", "complexity": "moderate" }
 }
 ```
+Output (illustrative, abbreviated):
+```json
+{
+  "status": "selected",
+  "instructions": [{ "id": "debugging", "content": "…" }],
+  "reasonCodes": ["skills_selected"],
+  "usedTokens": 640
+}
+```
+
+## Non-responsibilities
+Does not grant tools, scan the repository, run skill scripts, or own prompt section budgets.

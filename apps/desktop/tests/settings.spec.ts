@@ -25,7 +25,7 @@ import { catalogNumberDescriptors } from '../src/renderer/settings/policyCatalog
 
 describe('desktop settings', () => {
   it('includes full VS Code mitii.* catalog', () => {
-    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(212);
+    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(213);
     expect(SETTINGS_CATALOG['mitii.provider.model']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.tokenBudget.enabled']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.loopPolicy.enabled']).toBeTruthy();
@@ -87,6 +87,44 @@ describe('desktop settings', () => {
     expect(back.search.searxngBaseUrl).toBe('http://127.0.0.1:8080');
   });
 
+  it('enables semantic index when config embeddingSource is bundled', () => {
+    const settings = mitiiConfigFileToSettings({
+      embeddingSource: 'bundled',
+    });
+    expect(settings.semanticIndex.source).toBe('bundled');
+    expect(settings.semanticIndex.enabled).toBe(true);
+  });
+
+  it('aligns enabled=false + source=bundled defaults to enabled', () => {
+    const settings = mergeDesktopSettings({
+      semanticIndex: {
+        enabled: false,
+        source: 'bundled',
+        backend: 'bundled',
+        model: '',
+        dimensions: 0,
+        normalized: true,
+      },
+    });
+    expect(settings.semanticIndex.enabled).toBe(true);
+    expect(settings.semanticIndex.source).toBe('bundled');
+  });
+
+  it('keeps semantic off when source is disabled', () => {
+    const settings = mergeDesktopSettings({
+      semanticIndex: {
+        enabled: false,
+        source: 'disabled',
+        backend: 'disabled',
+        model: '',
+        dimensions: 0,
+        normalized: true,
+      },
+    });
+    expect(settings.semanticIndex.enabled).toBe(false);
+    expect(settings.semanticIndex.source).toBe('disabled');
+  });
+
   it('maps engine env for provider, sandbox, and search key', () => {
     const env = settingsToEngineEnv(
       mergeDesktopSettings({
@@ -115,6 +153,39 @@ describe('desktop settings', () => {
     expect(JSON.parse(env.MITII_DESKTOP_SETTINGS_JSON).provider.model).toBe(
       'claude',
     );
+  });
+
+  it('defaults OS sandbox on when unset so selective verify is fail-closed', () => {
+    const env = settingsToEngineEnv(
+      mergeDesktopSettings({
+        safety: {
+          approvalMode: 'never',
+          sandbox: {
+            enabled: null,
+            network: null,
+            backend: 'auto',
+          },
+        },
+      }),
+    );
+    expect(env.MITII_SANDBOX).toBe('1');
+    expect(env.MITII_SANDBOX_NETWORK).toBe('deny');
+  });
+
+  it('allows explicit sandbox disable', () => {
+    const env = settingsToEngineEnv(
+      mergeDesktopSettings({
+        safety: {
+          approvalMode: 'safe',
+          sandbox: {
+            enabled: false,
+            network: 'deny',
+            backend: 'auto',
+          },
+        },
+      }),
+    );
+    expect(env.MITII_SANDBOX).toBe('0');
   });
 
   it('normalizes Ollama cloud size tags into MITII_MODEL', () => {

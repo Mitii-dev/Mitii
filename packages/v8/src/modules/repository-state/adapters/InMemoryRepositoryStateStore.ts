@@ -1,7 +1,7 @@
 import { RepositoryStateError } from "../contracts/errors/RepositoryStateError";
 import type { RepositoryStateDescriptor } from "../contracts/output/RepositoryStateDescriptor";
 import type { RepositoryStateReference } from "../contracts/output/RepositoryStateReference";
-import type { RepositoryStateStorePort } from "../contracts/ports/RepositoryStateStorePorts";
+import type { RepositoryStateStorePort } from "../ports/RepositoryStateStorePorts";
 
 function referenceKey(reference: RepositoryStateReference): string {
   return `${reference.workspaceId}::${reference.stateToken}`;

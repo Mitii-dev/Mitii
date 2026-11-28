@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { TaskTargetExtractor } from "../../../request-understanding";
-import { DecisionPolicyPipeline } from "../../pipeline/DecisionPolicyPipeline";
+import { DecisionPolicyPipeline } from "../../flow/DecisionPolicyPipeline";
 import { createInput, createUnderstanding } from "../fixtures/decisionCases";
 import { isPathWithinScopes } from "../helpers/pathScopes";
 
@@ -118,7 +118,8 @@ describe("root markdown creation grants", () => {
       }),
     );
 
-    expect(decision.toolGrant.mutationPathScopes).toEqual([".", "docs"]);
+    // Root create ask → "."; docs folder mention is focus only (§4.3).
+    expect(decision.toolGrant.mutationPathScopes).toEqual(["."]);
 
     const mutationScopes =
       decision.toolGrant.mutationPathScopes ?? decision.toolGrant.pathScopes;

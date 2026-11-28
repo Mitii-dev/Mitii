@@ -1,71 +1,71 @@
 import {
   WorkspaceIndexingPipeline,
-} from "../pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+} from "../flow/ws-indexing-pipeline/WorkspaceIndexingPipeline";
 import type {
   WorkspaceIndexingEmbeddingSynchronizerPort,
   WorkspaceIndexingFilePolicyPort,
-} from "../pipeline/ws-indexing-pipeline/types";
+} from "../flow/ws-indexing-pipeline/types";
 import {
   BoundedWalker,
-} from "../internal/shared/bounded-walker/BoundedWalker";
+} from "../helpers/shared/bounded-walker/BoundedWalker";
 import {
   NodeFileSystemAdapter,
-} from "../internal/shared/filesystem/NodeFileSystemAdapter";
+} from "../helpers/shared/filesystem/NodeFileSystemAdapter";
 import type {
   FileSystemPort,
-} from "../internal/shared/filesystem/types";
+} from "../helpers/shared/filesystem/types";
 import {
   WorkspaceScanner,
-} from "../internal/workspace/WorkspaceScanner";
+} from "../helpers/workspace/WorkspaceScanner";
 import {
   WorkspaceIgnorePolicy,
-} from "../internal/workspace/utils/ws-ignore-policy/WorkspaceIgnorePolicy";
+} from "../helpers/workspace/utils/ws-ignore-policy/WorkspaceIgnorePolicy";
 import type {
   WorkspaceIgnorePolicyOptions,
-} from "../internal/workspace/types";
+} from "../helpers/workspace/types";
 import type {
   TreeSitterRuntimePort,
 } from "../contracts";
 import {
   SourceFileReader,
-} from "../internal/source-analysis/SourceFileReader";
+} from "../helpers/source-analysis/SourceFileReader";
 import {
   createSourceAnalysisBuilder,
-} from "../internal/source-analysis/SourceAnalysisFactory";
+} from "../helpers/source-analysis/SourceAnalysisFactory";
 import {
   ChunkingFactory,
-} from "../internal/chunking/ChunkingFactory";
+} from "../helpers/chunking/ChunkingFactory";
 import {
   NodeSha256ChunkHasher,
-} from "../internal/chunking/adapters/node/NodeSha256ChunkHasher";
+} from "../helpers/chunking/adapters/node/NodeSha256ChunkHasher";
 import {
   CodeIndexDocumentMapper,
-} from "../internal/code-indexing/CodeIndexDocumentMapper";
+} from "../helpers/code-indexing/CodeIndexDocumentMapper";
 import {
   CodeIndexPreparedFileIndexer,
-} from "../internal/code-indexing/CodeIndexPreparedFileIndexer";
+} from "../helpers/code-indexing/CodeIndexPreparedFileIndexer";
 import {
   CodeIndexUpdater,
-} from "../internal/code-indexing/CodeIndexUpdater";
+} from "../helpers/code-indexing/CodeIndexUpdater";
 import {
   SqliteCodeIndexMigration,
-} from "../internal/code-indexing/adapters/sqlite/SqliteCodeIndexMigration";
+} from "../helpers/code-indexing/adapters/sqlite/SqliteCodeIndexMigration";
 import {
   SqliteCodeIndexWriter,
-} from "../internal/code-indexing/adapters/sqlite/SqliteCodeIndexWriter";
+} from "../helpers/code-indexing/adapters/sqlite/SqliteCodeIndexWriter";
 import type {
   SqliteCodeIndexDatabasePort,
-} from "../internal/code-indexing/types";
+} from "../helpers/code-indexing/types";
 import {
   SqliteTextIndexFactory,
-} from "../internal/text-index/adapters/sqlite/SqliteTextIndexFactory";
+} from "../helpers/text-index/adapters/sqlite/SqliteTextIndexFactory";
 import {
   SqliteTextIndexMigration,
-} from "../internal/text-index/adapters/sqlite/SqliteTextIndexMigration";
+} from "../helpers/text-index/adapters/sqlite/SqliteTextIndexMigration";
 import type {
   TextIndexSqliteDatabasePort,
   SqliteTextIndexModule,
-} from "../internal/text-index/types";
+} from "../helpers/text-index/types";
 
 class DisabledEmbeddingSynchronizer
   implements WorkspaceIndexingEmbeddingSynchronizerPort {

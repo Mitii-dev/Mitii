@@ -49,4 +49,7 @@ export type {
   MemoryStorePort,
   MemoryIdGeneratorPort,
   MemoryEmbeddingPort,
-} from "./ports/MemoryPorts";
+} from "../ports/MemoryPorts";
+
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

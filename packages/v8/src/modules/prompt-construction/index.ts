@@ -5,11 +5,15 @@ export {
   PROMPT_OMISSION_REASONS,
   PROMPT_CONSTRUCTION_STATUSES,
   PROMPT_REASON_CODES,
+  PROMPT_REASON,
+  PROMPT_MESSAGES,
+  PROMPT_STAGES,
   PROMPT_CONSTRUCTION_ERROR_CODES,
 } from "./constants";
+export type { PromptStageName } from "./constants";
 
-export { PromptConstructionPipeline } from "./pipeline/PromptConstructionPipeline";
-export type { PromptConstructionPipelineOptions } from "./pipeline/PromptConstructionPipeline";
+export { PromptConstructionPipeline } from "./flow/PromptConstructionPipeline";
+export type { PromptConstructionPipelineOptions } from "./flow/PromptConstructionPipeline";
 
 export {
   promptConstructionInputSchema,
@@ -52,9 +56,11 @@ export type {
   PromptReasonCode,
   PromptConstructionErrorCode,
   TokenEstimatorPort,
+  ModuleLoggerPort,
 } from "./contracts";
+export { noopModuleLogger } from "./contracts";
 
-export { CharacterTokenEstimator } from "./CharacterTokenEstimator";
+export { CharacterTokenEstimator } from "./adapters/CharacterTokenEstimator";
 export {
   estimateTurnOutputHeadroom,
 } from "./turnOutputHeadroom";
@@ -78,7 +84,7 @@ export {
   MID_CONVERSATION_SYSTEM_MARKERS,
   wrapMidConversationUpdateText,
   wrapMidConversationSystemText,
-} from "./internal/fragments";
+} from "./helpers/fragments";
 export type {
   ContextualFragment,
   FragmentRole,
@@ -86,12 +92,12 @@ export type {
   AssembledFragments,
   AssembledFragmentOmission,
   SkillCatalogL1Entry,
-} from "./internal/fragments";
+} from "./helpers/fragments";
 
 /** Bridge maps — context → prompt slice / instruction merge. */
 export {
   mapContextToPromptSlice,
   mergePromptInstructions,
-} from "./actions";
+} from "./helpers";
 
-export { PROMPT_CONSTRUCTION_THRESHOLDS } from "./policy";
+export { PROMPT_CONSTRUCTION_THRESHOLDS } from "./rules";

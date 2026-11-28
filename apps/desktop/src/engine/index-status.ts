@@ -10,6 +10,7 @@ import {
   estimateIndexProgressPercent,
   IndexLockedError,
   isIndexLockHeld,
+  isSemanticIndexDisabledReason,
   readIndexPipelineHealth,
   readIndexProgress,
   readIndexRuntimeMetadata,
@@ -135,6 +136,15 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
       ...runningFields,
     };
   }
+  const embeddingError =
+    meta.lastEmbeddingError &&
+    !isSemanticIndexDisabledReason(meta.lastEmbeddingError)
+      ? meta.lastEmbeddingError
+      : undefined;
+  const lexicalReady =
+    ('lexicalReady' in runningFields && runningFields.lexicalReady === true) ||
+    health.overall === 'ready' ||
+    health.overall === 'lexical_only';
   return {
     indexed: true,
     fileCount: meta.fileCount ?? 0,
@@ -142,13 +152,14 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
     lastIndexedAt: meta.generatedAt,
     message: runningFields.running
       ? runningFields.progressMessage ?? 'Indexing in progress…'
-      : meta.lastEmbeddingError
-        ? `Indexed with embedding issue: ${meta.lastEmbeddingError}`
+      : embeddingError
+        ? `Indexed with embedding issue: ${embeddingError}`
         : health.overall === 'lexical_only'
           ? `Lexical ready (${meta.fileCount ?? 0} files); embeddings ${health.pipelines.embeddings.status}`
           : `Indexed ${meta.fileCount ?? 0} files`,
     sqlitePath: meta.sqlitePath,
-    embeddingError: meta.lastEmbeddingError,
+    ...(embeddingError ? { embeddingError } : {}),
+    ...(lexicalReady ? { lexicalReady: true } : {}),
     health,
     ...runningFields,
   };

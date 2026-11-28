@@ -19,6 +19,7 @@ import {
   REQUEST_ENVELOPE_LIMITS,
   SUPPORTED_IMAGE_MIME_TYPES,
   userSafetyRulesSchema,
+  runtimeSituationSnapshotSchema,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -114,6 +115,7 @@ export const mitiiStartInputSchema = z
     approvedPlan: planArtifactSchema.optional(),
     approvedPlanStrategy: planStrategyDecisionSchema.optional(),
     taskList: taskListSchema.optional(),
+    completedPlanStepIds: z.array(z.string().min(1)).max(64).optional(),
     budget: agentRunBudgetSchema.optional(),
     /**
      * Host wall-time budget for this run (ms). Merged into `budget` so the
@@ -137,6 +139,11 @@ export const mitiiStartInputSchema = z
       .optional(),
     userSafetyRules: userSafetyRulesSchema.optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
+    /**
+     * Host situation for runtime Orient (desktop/VS Code/CLI).
+     * SSOT: runtimeSituationSnapshotSchema (catalog name + relationships).
+     */
+    runtimeSituation: runtimeSituationSnapshotSchema.optional(),
     explorationDepth: explorationDepthSchema.optional(),
     windowBudget: z
       .object({

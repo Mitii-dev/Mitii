@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectDescriptor } from "../../repository-state";
 
 import { InMemoryManifestReader } from "..";
-import { discoverCandidatesForProject } from "../internal/discovery";
+import { discoverCandidatesForProject } from "../helpers/discovery";
 
 function project(
   partial: Partial<ProjectDescriptor> &

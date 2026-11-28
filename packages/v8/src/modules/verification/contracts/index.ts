@@ -53,11 +53,11 @@ export type {
   VerificationManifestReaderPort,
   VerificationSyntaxPort,
   VerificationSyntaxFinding,
-} from "./ports/VerificationPorts";
+} from "../ports/VerificationPorts";
 export {
   SYNTAX_PORT_EVIDENCE,
   NODE_MODULE_LOAD_EVIDENCE,
-} from "./ports/VerificationPorts";
+} from "../ports/VerificationPorts";
 
 export {
   verificationRecordSchema,
@@ -70,4 +70,6 @@ export type {
   VerificationRecordReasonCode,
 } from "./output/VerificationRecord";
 
-export type { VerificationRecordStorePort } from "./ports/VerificationRecordStorePort";
+export type { VerificationRecordStorePort } from "../ports/VerificationRecordStorePort";
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

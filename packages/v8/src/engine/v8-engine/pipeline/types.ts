@@ -3,7 +3,10 @@ import type { ModelMessage } from "../../../modules/model-gateway";
 import type { RepoBuildStateComparison, VerificationResult } from "../../../modules/verification";
 
 import type { VerificationGateDecision } from "../actions";
-import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
+import type {
+  BudgetWallReason,
+  ContinueReason,
+} from "../actions/buildStallContinueRationale";
 import type { AgentReasonCode } from "../contracts";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
 import type { ToolCallCache } from "../internal/ToolCallCache";
@@ -68,8 +71,8 @@ export type ToolLoopOutcome =
       decision: ExecutionDecision;
       /** Continue approvals already used; persisted on the checkpoint. */
       continueOverrideCount: number;
-      /** Why this wall was raised — drives resume reset copy and budget bumps. */
-      wallReason: BudgetWallReason;
+      /** Why this wall was raised — trimmed §10.3 ContinueReason (legacy shimmed). */
+      wallReason: BudgetWallReason | ContinueReason;
     }
   | { kind: "cancelled" }
   | {

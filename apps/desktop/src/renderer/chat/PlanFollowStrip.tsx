@@ -34,6 +34,9 @@ export interface PlanFollowStripProps {
   plan: PlanFollowView | null;
   running?: boolean;
   onOpenPlanFile?: (path: string) => void;
+  /** Continue the next open checklist item (partial-slice navigation). */
+  onContinueNext?: () => void;
+  onDismiss?: () => void;
 }
 
 interface CurrentPlanStep {
@@ -50,7 +53,7 @@ const STATUS_LABELS: Record<string, string> = {
   skipped: 'Skipped',
 };
 
-function currentPlanStep(
+export function currentPlanStep(
   plan: PlanFollowView | null,
   _running = false,
 ): CurrentPlanStep | null {
@@ -98,21 +101,42 @@ function currentPlanStep(
   return null;
 }
 
+/** Idle + open steps → host should show Continue. */
+export function planFollowNeedsContinue(
+  plan: PlanFollowView | null,
+  running = false,
+): boolean {
+  const current = currentPlanStep(plan, running);
+  return Boolean(!running && current && !current.complete);
+}
+
 export function PlanFollowStrip({
   plan,
   running = false,
   onOpenPlanFile,
+  onContinueNext,
+  onDismiss,
 }: PlanFollowStripProps) {
   const stepCount = plan?.steps?.length ?? 0;
   // Long plans start collapsed so they don't bury the composer / Approve.
   const [expanded, setExpanded] = useState(() => stepCount > 0 && stepCount <= 6);
   const current = currentPlanStep(plan, running);
   if (!plan) return null;
+  // Completed desk should not stick as a second "plan" over the composer.
+  if (!running && current?.complete) return null;
 
   const steps = plan.steps ?? [];
   const totalSteps = steps.length;
   const completedSteps = steps.filter((step) => step.status === 'done').length;
-  const statusText = current?.complete ? 'Done' : running ? 'Running' : 'Ready';
+  const hasOpenWork = Boolean(current && !current.complete);
+  const showContinue = !running && hasOpenWork && Boolean(onContinueNext);
+  const statusText = current?.complete
+    ? 'Done'
+    : running
+      ? 'Running'
+      : showContinue
+        ? 'Next up'
+        : 'Ready';
   const showLoader = running && !current?.complete;
   const headingText = current?.complete
     ? 'Plan complete'
@@ -120,7 +144,9 @@ export function PlanFollowStrip({
       ? 'Starting plan'
       : running
         ? 'Following plan'
-        : 'Plan ready';
+        : showContinue
+          ? 'Next up'
+          : 'Plan ready';
   const fallbackTitle = plan.objective || plan.title || 'Plan';
   const currentIsRunning =
     current &&
@@ -189,6 +215,22 @@ export function PlanFollowStrip({
           <span className="plan-follow-strip__loader" aria-hidden />
         ) : null}
       </div>
+      {showContinue ? (
+        <div className="plan-follow-strip__cta">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={onContinueNext}
+          >
+            Continue
+          </button>
+          {onDismiss ? (
+            <button type="button" className="btn-ghost" onClick={onDismiss}>
+              Dismiss
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {expanded && steps.length > 0 ? (
         <ol className="plan-follow-strip__steps">
           {steps.map((step, index) => (

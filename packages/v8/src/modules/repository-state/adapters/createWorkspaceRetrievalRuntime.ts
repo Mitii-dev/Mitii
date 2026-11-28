@@ -1,24 +1,24 @@
 import type {
   EmbeddingProvider,
-} from "../internal/embedding/types";
+} from "../helpers/embedding/types";
 import {
   SqliteTextIndexFactory,
-} from "../internal/text-index/adapters/sqlite/SqliteTextIndexFactory";
+} from "../helpers/text-index/adapters/sqlite/SqliteTextIndexFactory";
 import type {
   TextIndexReadPort,
   TextIndexSqliteDatabasePort,
-} from "../internal/text-index/types";
+} from "../helpers/text-index/types";
 import {
   LanceDbVectorIndexFactory,
-} from "../internal/vector-index/adapters/lancedb/LanceDbVectorIndexFactory";
+} from "../helpers/vector-index/adapters/lancedb/LanceDbVectorIndexFactory";
 import {
   VectorIndexFactory,
-} from "../internal/vector-index/VectorIndexFactory";
+} from "../helpers/vector-index/VectorIndexFactory";
 import type {
   LanceDbConnectionPort,
   LanceDbVectorIndexAdapterOptions,
   VectorIndexReadPort,
-} from "../internal/vector-index/types";
+} from "../helpers/vector-index/types";
 
 export interface WorkspaceRetrievalRuntimeVectorOptions {
   embeddingProvider: EmbeddingProvider;

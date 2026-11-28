@@ -76,6 +76,7 @@ src/
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
   session-log/             # live .mitii/logs JSONL (Desktop/VS Code/CLI parity)
+  sandbox/                 # OS process sandbox (seatbelt / bubblewrap / docker|podman)
   internal/                # private helpers (not public)
 ```
 
@@ -126,7 +127,7 @@ Every host (CLI, VS Code, Desktop, ACP) composes the same stack around `createMi
 | **Hosts own** | LLM port resolution and secrets, settings, IDE diagnostics / code navigation, SQLite opener, the repository-context wrapper (passed as a callback receiving `{ repositoryState, workspaceRoot, git }`) |
 | **Failure** | `HostClientOptionsError` with `code` in `invalid_workspace_id`, `invalid_default_mode`, `invalid_sandbox` (scalar options are Zod-validated) |
 
-Helpers: `readSandboxOptionsFromEnv(env)` parses the shared `MITII_SANDBOX*` contract; `bindHostMcp(manager, settings, root)` adapts any MCP manager (`@mitii/mcp` or a host-owned one) to the `HostMcpPort`.
+Helpers: `readSandboxOptionsFromEnv(env)` parses the shared `MITII_SANDBOX*` contract (including `MITII_SANDBOX_LIFECYCLE`); `createHostClient` returns `sandbox.dispose()` / `sandbox.readiness` for session teardown and UI probes; OS isolation is `@mitii/sandbox` (re-exported); `buildHostSandboxPolicy` adds `.mitii/safety.json` glue (see `src/sandbox/README.md`); `bindHostMcp(manager, settings, root)` adapts any MCP manager (`@mitii/mcp` or a host-owned one) to the `HostMcpPort`.
 
 ```ts
 const { client } = await createHostClient({

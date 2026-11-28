@@ -17,6 +17,13 @@ export type {
 } from './contracts.js';
 
 export { prepareStartInput } from './prepareStartInput.js';
+export { buildRuntimeSituation } from './buildRuntimeSituation.js';
+export {
+  readWorkspaceCatalogSlice,
+  type CatalogProjectSlice,
+  type WorkspaceCatalogSlice,
+} from './readWorkspaceCatalogSlice.js';
+export type { CatalogRelationship } from './extractCatalogRelationships.js';
 export {
   normalizeApprovalPresetId,
   resolveApprovalPreset,

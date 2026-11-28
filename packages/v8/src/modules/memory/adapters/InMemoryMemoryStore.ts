@@ -5,10 +5,15 @@ import {
   type MemoryScope,
   type MemoryStorePort,
 } from "../contracts";
-import { applyAccessTouch } from "../internal/retention";
+import { inMemoryCommit } from "./store/commit";
+import { inMemoryList } from "./store/list";
+import { inMemoryQuery } from "./store/query";
+import { inMemoryRecordAccess } from "./store/record-access";
+import { inMemoryTransact } from "./store/transact";
 
 /**
  * In-process memory store for tests and single-process hosts.
+ * Port method bodies: flat `impl/store-*.ts` (same style as `flow/`).
  */
 export class InMemoryMemoryStore implements MemoryStorePort {
   private readonly facts = new Map<string, MemoryFact>();
@@ -24,56 +29,32 @@ export class InMemoryMemoryStore implements MemoryStorePort {
     scope: MemoryScope;
     query: string;
   }): readonly MemoryFact[] {
-    void input.query;
-    return [...this.facts.values()].filter((fact) =>
-      scopesCompatible(fact.scope, input.scope),
-    );
+    return inMemoryQuery({
+      facts: this.facts,
+      scope: input.scope,
+      query: input.query,
+    });
   }
 
   public commit(fact: MemoryFact): void {
-    const parsed = memoryFactSchema.parse(fact);
-    this.facts.set(parsed.id, parsed);
+    inMemoryCommit({ facts: this.facts, fact });
   }
 
-  public transact<T>(scope: MemoryScope, decide: (facts: readonly MemoryFact[]) => {
-    facts: readonly MemoryFact[]; result: T;
-  }): T {
-    const decision = decide(this.list(scope).map(row => structuredClone(row)));
-    const facts = memoryFactSchema.array().parse(decision.facts);
-    for (const fact of facts) {
-      if (!scopesCompatible(fact.scope, scope)) throw new Error("Memory transaction scope mismatch.");
-    }
-    for (const fact of facts) this.facts.set(fact.id, fact);
-    return decision.result;
+  public transact<T>(
+    scope: MemoryScope,
+    decide: (facts: readonly MemoryFact[]) => {
+      facts: readonly MemoryFact[];
+      result: T;
+    },
+  ): T {
+    return inMemoryTransact({ facts: this.facts, scope, decide });
   }
 
   public list(scope?: MemoryScope): readonly MemoryFact[] {
-    const facts = [...this.facts.values()];
-    return scope
-      ? facts.filter((fact) => scopesCompatible(fact.scope, scope))
-      : facts;
+    return inMemoryList({ facts: this.facts, scope });
   }
 
   public recordAccess(ids: readonly string[], at: string): void {
-    for (const id of ids) {
-      const existing = this.facts.get(id);
-      if (!existing) {
-        continue;
-      }
-      this.facts.set(id, applyAccessTouch(existing, at));
-    }
+    inMemoryRecordAccess({ facts: this.facts, ids, at });
   }
-}
-
-function scopesCompatible(fact: MemoryScope, request: MemoryScope): boolean {
-  if (fact.kind !== request.kind) {
-    return false;
-  }
-  if (fact.kind === "user") {
-    return fact.userId === request.userId;
-  }
-  if (fact.kind === "workspace") {
-    return fact.workspaceId === request.workspaceId;
-  }
-  return fact.projectId === request.projectId;
 }

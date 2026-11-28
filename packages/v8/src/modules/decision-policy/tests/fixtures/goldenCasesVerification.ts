@@ -80,7 +80,7 @@ export const GOLDEN_DECISION_CASES_VERIFICATION: GoldenDecisionCase[] = [
       route: "execute",
       planningDepth: "none",
       maximumWorkspaceEffect: "write",
-      mutationPathScopes: ["app"],
+      pathScopes: ["."],
       forbidVisiblePlan: true,
       reasonCodesIncludes: ["mutation_execute", "fast_path_explicit_paths"],
     },
@@ -171,7 +171,7 @@ export const GOLDEN_DECISION_CASES_VERIFICATION: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       reasonCodesIncludes: ["repository_state_degraded"],
       warningsIncludes: ["degraded"],
     },

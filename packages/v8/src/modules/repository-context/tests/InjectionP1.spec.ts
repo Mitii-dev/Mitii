@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { applyModalityQuotas } from "../internal/hybrid-retrieval/applyModalityQuotas";
-import { HybridRetriever } from "../internal/hybrid-retrieval/HybridRetriever";
-import { RetrievalCandidateKeyBuilder } from "../internal/hybrid-retrieval/RetrievalCandidateKeyBuilder";
-import { WeightedReciprocalRankFusion } from "../internal/hybrid-retrieval/WeightedReciprocalRankFusion";
-import { HYBRID_RETRIEVAL_IDS } from "../internal/hybrid-retrieval/constants";
+import { applyModalityQuotas } from "../helpers/hybrid-retrieval/applyModalityQuotas";
+import { HybridRetriever } from "../helpers/hybrid-retrieval/HybridRetriever";
+import { RetrievalCandidateKeyBuilder } from "../helpers/hybrid-retrieval/RetrievalCandidateKeyBuilder";
+import { WeightedReciprocalRankFusion } from "../helpers/hybrid-retrieval/WeightedReciprocalRankFusion";
+import { HYBRID_RETRIEVAL_IDS } from "../helpers/hybrid-retrieval/constants";
 import {
   SessionContextRetrievalSource,
-} from "../internal/hybrid-retrieval/sources/SessionContextRetrievalSource";
+} from "../helpers/hybrid-retrieval/sources/SessionContextRetrievalSource";
 import type {
   HybridRetrievalCandidate,
   RetrievalCandidate,
   RetrievalSource,
   RetrievalSourceResult,
   SuccessfulRetrievalSourceResult,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 
 class StaticRetrievalSource implements RetrievalSource {
   constructor(

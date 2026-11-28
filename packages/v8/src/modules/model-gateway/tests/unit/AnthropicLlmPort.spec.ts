@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { AnthropicLlmPort, MODEL_PROVIDER_SUPPORT } from "../../index";
-import type { ModelEvent } from "../../contracts/types";
+import type { ModelEvent } from "../../contracts";
 
 async function collectEvents(
   stream: AsyncIterable<ModelEvent>,

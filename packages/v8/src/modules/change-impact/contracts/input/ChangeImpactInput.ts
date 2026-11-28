@@ -8,7 +8,7 @@ import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   CHANGE_IMPACT_SEED_EXPANSIONS,
 } from "../../constants";
-import { CHANGE_IMPACT_POLICY } from "../../policy";
+import { CHANGE_IMPACT_POLICY } from "../../rules";
 
 export const changeImpactFileSeedSchema = z
   .object({

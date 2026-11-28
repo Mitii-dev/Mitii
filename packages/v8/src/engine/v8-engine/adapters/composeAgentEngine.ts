@@ -7,12 +7,16 @@ import type {
   RestorePointSummary,
 } from "../contracts";
 import type { V8EngineImplementation } from "../constants";
+import { composeRuntime, wrapEngineWithRuntimeShell } from "../../../runtime";
+import type { RuntimePipeline } from "../../../runtime";
+import { buildRuntimeHostDeps } from "../../../runtime/adapters/compose/BuildRuntimeHostDeps";
 import { composeV8Engine } from "./composeV8Engine";
 import type { ComposeV8EngineOptions } from "./composeV8Engine";
 import {
   defaultV8EngineImplementation,
   isKnownV8EngineImplementation,
 } from "../promotion";
+import { sealEventBusStart } from "./SealEventBusStart";
 
 /** Shared host surface for V8EnginePipeline. */
 export type MitiiAgentEngine = {
@@ -28,24 +32,65 @@ export type ComposeAgentEngineOptions = ComposeV8EngineOptions & {
    * `legacy` is accepted for compatibility and always resolves to `v8`.
    */
   implementation?: V8EngineImplementation | "legacy";
+  /** Absolute workspace root for runtime tool adapter (optional dual-run). */
+  workspaceRoot?: string;
+  /** Host workspace id for memory scope + latest repository-state lookup. */
+  workspaceId?: string;
+  /**
+   * @deprecated Ignored — runtime shell is always the product `engine`.
+   * Event-bus start/resume are sealed (hard-deleted on the composed surface).
+   */
+  preferRuntimeShell?: boolean;
 };
 
 export type ComposedAgentEngine = {
   implementation: V8EngineImplementation;
+  /** Primary host surface — runtime shell (live events). */
   engine: MitiiAgentEngine;
+  /**
+   * Restore owner. `start`/`resume` throw (`event_bus_*_deleted`).
+   * Direct `new V8EnginePipeline` remains for internal goldens only.
+   */
+  eventBusEngine: MitiiAgentEngine;
+  /** New runtime pump — always composed. */
+  runtime: RuntimePipeline;
 };
 
 /**
- * Compose the v8 engine. Legacy `implementation: "legacy"` is accepted for
- * host settings compatibility but always resolves to v8.
+ * Compose the v8 engine + dual-run runtime.
+ * - `engine.start/resume` — runtime shell (live streaming)
+ * - `eventBusEngine` — restore only (start/resume hard-deleted on this surface)
+ * - `runtime.start/resume` — shell pump 1–11
  */
 export function composeAgentEngine(
   options: ComposeAgentEngineOptions,
 ): ComposedAgentEngine {
   const implementation = parseV8EngineImplementation(options.implementation);
+  const hostDeps = buildRuntimeHostDeps({
+    skillsCatalog: options.skillsCatalog,
+    memoryStore: options.memoryStore,
+    memoryEmbedding: options.memoryEmbedding,
+    repositoryContext: options.repositoryContext,
+    repositoryState: options.repositoryState,
+    verification: options.verification,
+    workspaceId: options.workspaceId,
+    workspaceRoot: options.workspaceRoot,
+  });
+  const runtime = composeRuntime({
+    runLlm: options.runLlm,
+    toolRuntime: options.tools,
+    workspaceRoot: options.workspaceRoot,
+    toolDefinitions: options.toolDefinitions,
+    ...hostDeps,
+  });
+  const rawEventBus = composeV8Engine(options);
+  const engine = wrapEngineWithRuntimeShell(rawEventBus, runtime);
+  const eventBusEngine = sealEventBusStart(rawEventBus);
   return {
     implementation,
-    engine: composeV8Engine(options),
+    engine,
+    eventBusEngine,
+    runtime,
   };
 }
 
@@ -74,7 +119,10 @@ export function isMitiiAgentEngine(
   );
 }
 
-/** @deprecated use composeAgentEngine; returns v8 engine only. */
+/**
+ * @deprecated use composeAgentEngine().engine (runtime shell).
+ * Previously returned raw event-bus; now returns the shell wrap.
+ */
 export function composeReadOnlyAgentEngine(
   options: ComposeAgentEngineOptions,
 ): MitiiAgentEngine {

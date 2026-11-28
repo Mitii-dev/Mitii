@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   INTENT_CLASSIFIER_MAXIMUM_OUTPUT_TOKENS_BY_BAND,
   resolveIntentClassifierMaximumOutputTokens,
-} from "../intent/resolveIntentClassifierMaximumOutputTokens";
+} from "../helpers/intent/resolveIntentClassifierMaximumOutputTokens";
 
 describe("resolveIntentClassifierMaximumOutputTokens", () => {
   it("scales by compact / standard / wide bands", () => {

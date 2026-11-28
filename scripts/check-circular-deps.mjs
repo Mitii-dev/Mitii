@@ -32,6 +32,7 @@ const SCAN_ROOTS = [
   'packages/ui-theme',
   'packages/automation/src',
   'packages/search-kit/src',
+  'packages/sandbox/src',
   'apps/cli/src',
   'apps/desktop/src',
   'apps/vscode/src',

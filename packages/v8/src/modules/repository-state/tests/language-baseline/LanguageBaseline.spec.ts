@@ -5,10 +5,10 @@ import {
   LANGUAGE_IDS,
   defaultLanguageProfileRegistry,
 } from "../../index";
-import { ChunkingFactory } from "../../internal/chunking/ChunkingFactory";
-import { NodeSha256ChunkHasher } from "../../internal/chunking/adapters/node/NodeSha256ChunkHasher";
-import { LanguageDetector } from "../../internal/source-analysis/LanguageDetector";
-import { createSourceAnalysisBuilder } from "../../internal/source-analysis/SourceAnalysisFactory";
+import { ChunkingFactory } from "../../helpers/chunking/ChunkingFactory";
+import { NodeSha256ChunkHasher } from "../../helpers/chunking/adapters/node/NodeSha256ChunkHasher";
+import { LanguageDetector } from "../../helpers/source-analysis/LanguageDetector";
+import { createSourceAnalysisBuilder } from "../../helpers/source-analysis/SourceAnalysisFactory";
 import type { TreeSitterRuntimePort } from "../../index";
 
 import { LANGUAGE_BASELINE_FIXTURES } from "./fixtures";

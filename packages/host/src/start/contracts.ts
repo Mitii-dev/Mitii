@@ -88,6 +88,28 @@ export const prepareStartInputOptionsSchema = z
     logVerbosity: z.enum(['minimal', 'standard', 'verbose']).optional(),
     origin: z.enum(['user', 'automation', 'api']).optional(),
     maxWallTimeMs: z.number().int().positive().optional(),
+
+    /**
+     * Orient situation gather (git / catalog / host cwd). Default true when
+     * workspaceRoot is set. Desktop/VS Code/CLI inherit via prepareStartInput.
+     */
+    attachRuntimeSituation: z.boolean().optional(),
+    /** Skip disk/git I/O inside situation gather (unit tests). */
+    skipRuntimeSituationGather: z.boolean().optional(),
+    /** Skip soft Node diagnostics gather when host supplied none. */
+    skipDiagnostics: z.boolean().optional(),
+    focusedFile: z.string().min(1).optional(),
+    cwd: z.string().min(1).optional(),
+    dirtyPaths: z.array(z.string().min(1)).max(64).optional(),
+    diagnostics: z.array(z.string()).max(32).optional(),
+    selection: z
+      .object({
+        path: z.string().min(1),
+        startLine: z.number().optional(),
+        endLine: z.number().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -101,6 +123,7 @@ export type PrepareStartInputOptions = z.infer<
   approvedPlan?: MitiiStartInput['approvedPlan'];
   approvedPlanStrategy?: MitiiStartInput['approvedPlanStrategy'];
   taskList?: MitiiStartInput['taskList'];
+  completedPlanStepIds?: MitiiStartInput['completedPlanStepIds'];
   environment?: MitiiStartInput['environment'];
   budget?: MitiiStartInput['budget'];
   loopPolicy?: MitiiStartInput['loopPolicy'];
@@ -108,6 +131,8 @@ export type PrepareStartInputOptions = z.infer<
   attachments?: MitiiStartInput['attachments'];
   steering?: MitiiStartInput['steering'];
   autonomyPreset?: MitiiStartInput['autonomyPreset'];
+  /** Host-supplied situation merged over gather (optional). */
+  runtimeSituation?: MitiiStartInput['runtimeSituation'];
 };
 
 export interface PrepareStartInputMeta {

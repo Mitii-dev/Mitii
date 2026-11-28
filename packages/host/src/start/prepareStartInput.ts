@@ -11,6 +11,7 @@ import {
   type AgentMode,
   type MitiiStartInput,
 } from '@mitii/sdk';
+import { MAX_REQUIRED_MCP_SERVERS } from '@mitii/v8';
 
 import {
   isDatabaseUiMode,
@@ -35,6 +36,7 @@ import {
   type PrepareStartInputOptions,
   type PrepareStartInputResult,
 } from './contracts.js';
+import { buildRuntimeSituation } from './buildRuntimeSituation.js';
 import {
   normalizeApprovalPresetId,
   resolveApprovalPreset,
@@ -65,6 +67,7 @@ export async function prepareStartInput(
     approvedPlan,
     approvedPlanStrategy,
     taskList,
+    completedPlanStepIds,
     environment,
     budget,
     loopPolicy,
@@ -72,6 +75,7 @@ export async function prepareStartInput(
     attachments,
     steering,
     autonomyPreset,
+    runtimeSituation: runtimeSituationOverride,
     ...scalarOptions
   } = options;
   const parsed = prepareStartInputOptionsSchema.safeParse(scalarOptions);
@@ -188,7 +192,7 @@ export async function prepareStartInput(
     databaseOverlay &&
     databaseOverlay.startFields.requiredMcpServerIds.length > 0
       ? [...databaseOverlay.startFields.requiredMcpServerIds]
-      : uniqueIds(input.requiredMcpServerIds, 16);
+      : uniqueIds(input.requiredMcpServerIds, MAX_REQUIRED_MCP_SERVERS);
 
   const explorationDepth =
     input.explorationDepth ??
@@ -207,6 +211,43 @@ export async function prepareStartInput(
     windowBudget.maximumOutputTokens = input.maximumOutputTokens;
   }
   const hasWindowBudget = Object.keys(windowBudget).length > 0;
+
+  const attachSituation =
+    input.attachRuntimeSituation ?? Boolean(workspaceRoot);
+  const projectRuleIds = mergedProjectRules
+    .map((rule) => {
+      if (typeof rule === 'string') return undefined;
+      if (rule && typeof rule === 'object' && 'id' in rule) {
+        const id = (rule as { id?: unknown }).id;
+        return typeof id === 'string' && id.trim() ? id.trim() : undefined;
+      }
+      return undefined;
+    })
+    .filter((id): id is string => Boolean(id))
+    .slice(0, 32);
+
+  let gatheredSituation: MitiiStartInput['runtimeSituation'];
+  let gatheredDirty: string[] | undefined;
+  if (attachSituation) {
+    const built = await buildRuntimeSituation({
+      workspaceRoot,
+      focusedFile: input.focusedFile,
+      cwd: input.cwd ?? workspaceRoot,
+      dirtyPaths: input.dirtyPaths,
+      diagnostics: input.diagnostics,
+      selection: input.selection,
+      projectRuleIds,
+      skipGather: input.skipRuntimeSituationGather === true,
+      skipDiagnostics: input.skipDiagnostics === true,
+    });
+    gatheredSituation = built.runtimeSituation;
+    gatheredDirty = built.dirtyPaths;
+  }
+
+  const runtimeSituation = mergeRuntimeSituation(
+    gatheredSituation,
+    runtimeSituationOverride,
+  );
 
   const startCandidate: MitiiStartInput = {
     prompt: input.prompt,
@@ -240,6 +281,9 @@ export async function prepareStartInput(
     ...(approvedPlan ? { approvedPlan } : {}),
     ...(approvedPlanStrategy ? { approvedPlanStrategy } : {}),
     ...(taskList ? { taskList } : {}),
+    ...(completedPlanStepIds && completedPlanStepIds.length > 0
+      ? { completedPlanStepIds }
+      : {}),
     ...(environment && environment.length > 0 ? { environment } : {}),
     ...(budget ? { budget } : {}),
     ...(loopPolicy ? { loopPolicy } : {}),
@@ -252,6 +296,12 @@ export async function prepareStartInput(
     ...(input.maxWallTimeMs != null
       ? { maxWallTimeMs: input.maxWallTimeMs }
       : {}),
+    ...(gatheredDirty && gatheredDirty.length > 0
+      ? { dirtyPaths: gatheredDirty }
+      : input.dirtyPaths && input.dirtyPaths.length > 0
+        ? { dirtyPaths: [...input.dirtyPaths] }
+        : {}),
+    ...(runtimeSituation ? { runtimeSituation } : {}),
   };
 
   const start = mitiiStartInputSchema.parse(startCandidate);
@@ -270,5 +320,76 @@ export async function prepareStartInput(
         : {}),
       projectRulesCount: mergedProjectRules.length,
     },
+  };
+}
+
+function mergeRuntimeSituation(
+  gathered: MitiiStartInput['runtimeSituation'],
+  override: MitiiStartInput['runtimeSituation'],
+): MitiiStartInput['runtimeSituation'] | undefined {
+  if (!gathered && !override) return undefined;
+  if (!override) return gathered;
+  if (!gathered) return override;
+  return {
+    ...gathered,
+    ...override,
+    host: {
+      ...(gathered.host ?? {}),
+      ...(override.host ?? {}),
+      dirtyPaths: [
+        ...new Set([
+          ...(gathered.host?.dirtyPaths ?? []),
+          ...(override.host?.dirtyPaths ?? []),
+        ]),
+      ].slice(0, 64),
+      diagnostics: [
+        ...new Set([
+          ...(gathered.host?.diagnostics ?? []),
+          ...(override.host?.diagnostics ?? []),
+        ]),
+      ].slice(0, 32),
+    },
+    git: {
+      ...(gathered.git ?? {}),
+      ...(override.git ?? {}),
+      recentCommits: [
+        ...(override.git?.recentCommits ?? gathered.git?.recentCommits ?? []),
+      ].slice(0, 16),
+    },
+    catalog: {
+      ...(gathered.catalog ?? {}),
+      ...(override.catalog ?? {}),
+      projects: (
+        override.catalog?.projects ??
+        gathered.catalog?.projects ??
+        []
+      ).slice(0, 64),
+      configPointers: [
+        ...new Set([
+          ...(gathered.catalog?.configPointers ?? []),
+          ...(override.catalog?.configPointers ?? []),
+        ]),
+      ].slice(0, 64),
+      relationships: (
+        override.catalog?.relationships ??
+        gathered.catalog?.relationships ??
+        []
+      ).slice(0, 128),
+    },
+    impact: {
+      relatedSeeds: [
+        ...new Set([
+          ...(gathered.impact?.relatedSeeds ?? []),
+          ...(override.impact?.relatedSeeds ?? []),
+        ]),
+      ].slice(0, 64),
+    },
+    memory: override.memory ?? gathered.memory,
+    projectRuleIds: [
+      ...new Set([
+        ...(gathered.projectRuleIds ?? []),
+        ...(override.projectRuleIds ?? []),
+      ]),
+    ].slice(0, 32),
   };
 }

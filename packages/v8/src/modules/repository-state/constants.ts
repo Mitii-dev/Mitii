@@ -3,6 +3,42 @@
  */
 export const REPOSITORY_STATE_SCHEMA_VERSION = 1 as const;
 
+export const REPOSITORY_STATE_MESSAGES = {
+  invalidCandidate: "Invalid repository state candidate.",
+  publicationCancelled: "Repository state publication was cancelled.",
+  unknownStateToken: "No published repository state matches the state token.",
+  workspaceMismatch: "State token does not belong to the requested workspace.",
+  cannotPinUnknown: "Cannot pin an unknown repository state token.",
+} as const;
+
+/**
+ * Named accessors for frequently logged reason codes.
+ * Full catalog remains {@link REPOSITORY_STATE_REASON_CODES}.
+ */
+export const REPOSITORY_STATE_REASON = {
+  scanPartial: "scan_partial",
+  capabilityDegraded: "capability_degraded",
+  unknownStateToken: "unknown_state_token",
+  workspaceMismatch: "workspace_mismatch",
+  publicationCancelled: "publication_cancelled",
+  statePinned: "state_pinned",
+  stateNotFound: "state_not_found",
+} as const;
+
+/** Ordered flow stage names (publish path + read/pin/unpin logger). */
+export const REPOSITORY_STATE_STAGES = {
+  parseCandidate: "1-parse-candidate",
+  buildDescriptor: "2-build-descriptor",
+  persistDescriptor: "3-persist-descriptor",
+  finalizePublish: "4-finalize-publish",
+  read: "read",
+  pin: "pin",
+  unpin: "unpin",
+} as const;
+
+export type RepositoryStateStageName =
+  (typeof REPOSITORY_STATE_STAGES)[keyof typeof REPOSITORY_STATE_STAGES];
+
 export const REPOSITORY_STATE_READINESS = [
   "ready",
   "degraded",

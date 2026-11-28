@@ -14,7 +14,7 @@ import type {
   ModelRequest,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
-} from "../contracts/types";
+} from "../contracts";
 import {
   approximateTokenCount,
   cancelledEvent,
@@ -23,16 +23,16 @@ import {
   mapHttpStatusError,
   normalizeNonNegativeInteger,
   normalizePositiveInteger,
-} from "../internal/http";
-import { sanitizeGeminiJsonSchema } from "../internal/sanitizeGeminiJsonSchema";
-import { iterateSseEvents } from "../internal/sse";
-import type { GeminiPart, GeminiResponse } from "../internal/geminiMessages";
-import { mapGeminiMessages } from "../internal/geminiMessages";
+} from "../helpers/http";
+import { sanitizeGeminiJsonSchema } from "../helpers/sanitizeGeminiJsonSchema";
+import { iterateSseEvents } from "../helpers/sse";
+import type { GeminiPart, GeminiResponse } from "../helpers/geminiMessages";
+import { mapGeminiMessages } from "../helpers/geminiMessages";
 import {
   mapGeminiFinishReason,
   mapGeminiUsage,
   readGeminiThoughtSignature,
-} from "../internal/geminiResponses";
+} from "../helpers/geminiResponses";
 import { ModelCapabilityResolver } from "../ModelCapabilityResolver";
 
 export interface GeminiLlmPortConfig {

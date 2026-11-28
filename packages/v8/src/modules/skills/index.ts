@@ -1,11 +1,25 @@
+/**
+ * Skills public surface.
+ *
+ * Prefer `SkillsPipeline.select` for catalog → instruction blocks.
+ */
+
 export {
   SKILLS_SCHEMA_VERSION,
   SKILL_SELECTION_STATUSES,
   SKILL_OMISSION_REASONS,
   SKILL_SELECTION_KINDS,
   SKILL_REASON_CODES,
+  SKILL_REASON,
   SKILLS_ERROR_CODES,
+  SKILLS_MESSAGES,
+  SKILLS_STAGES,
   MAX_REQUIRED_SKILLS,
+  MAX_PREFERRED_SKILLS,
+} from "./constants";
+export type {
+  SkillReasonCodeConst,
+  SkillsStageName,
 } from "./constants";
 
 export {
@@ -17,8 +31,10 @@ export {
   DEFAULT_MIN_USEFUL_SKILL_TOKENS,
 } from "./defaults";
 
-export { SkillsPipeline } from "./pipeline/SkillsPipeline";
-export type { SkillsPipelineDependencies } from "./pipeline/SkillsPipeline";
+export { SKILLS_THRESHOLDS } from "./rules";
+
+export { SkillsPipeline } from "./flow/SkillsPipeline";
+export type { SkillsPipelineDependencies } from "./flow/SkillsPipeline";
 
 export {
   skillsSelectInputSchema,
@@ -33,6 +49,7 @@ export {
   skillIndexEntrySchema,
   skillResourceManifestSchema,
   SkillsError,
+  noopModuleLogger,
 } from "./contracts";
 export type {
   SkillsSelectInput,
@@ -48,21 +65,21 @@ export type {
   SkillReasonCode,
   SkillsErrorCode,
   SkillsCatalogPort,
+  SkillSimilarityPort,
+  ModuleLoggerPort,
 } from "./contracts";
 
-export { InMemorySkillsCatalog } from "./adapters";
-export { KeywordSkillSimilarity } from "./KeywordSkillSimilarity";
-export type { SkillSimilarityPort } from "./contracts";
+export {
+  InMemorySkillsCatalog,
+  KeywordSkillSimilarity,
+} from "./adapters";
+
 export {
   parseRequiredSkillMentions,
   mergeRequiredSkillIds,
   normalizeSkillId,
-} from "./parseRequiredSkillMentions";
-
-/** Bridge maps — understanding → skill evidence. */
-export {
   mapUnderstandingToSkillEvidence,
   deriveSkillRepoEvidence,
   formatSkillPromptContent,
-} from "./actions";
-export type { SkillRepoEvidence } from "./actions";
+} from "./flow/steps";
+export type { SkillRepoEvidence } from "./flow/steps";

@@ -12,20 +12,20 @@ import {
 
 import {
   contextAssemblyResultSchema,
-} from "../internal/context-assembly/schema";
+} from "../helpers/context-assembly/schema";
 
 import {
   contextSelectionResultSchema,
-} from "../internal/context-selection/schema";
+} from "../helpers/context-selection/schema";
 
 import {
   hybridRetrievalResultSchema,
-} from "../internal/hybrid-retrieval/schema";
+} from "../helpers/hybrid-retrieval/schema";
 
 import {
   REPOSITORY_CONTEXT_PIPELINE_LIMITS,
   REPOSITORY_CONTEXT_PIPELINE_SCHEMA_VERSION,
-} from "../pipeline/context-pipeline/constants";
+} from "../constants";
 
 const canonicalRelativePathSchema =
   z.string()

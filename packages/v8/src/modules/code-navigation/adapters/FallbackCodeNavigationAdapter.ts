@@ -1,4 +1,3 @@
-import { CODE_NAVIGATION_OPERATIONS } from "../constants";
 import type {
   CodeNavigationCallOptions,
   CodeNavigationCapability,
@@ -9,10 +8,20 @@ import type {
   CodeNavigationQuery,
   CodeNavigationWorkspaceQuery,
 } from "../contracts";
+import { fallbackCallHierarchy } from "./fallback/call-hierarchy";
+import { fallbackCapability } from "./fallback/capability";
+import { fallbackDefinition } from "./fallback/definition";
+import { fallbackDocumentSymbols } from "./fallback/document-symbols";
+import { fallbackHover } from "./fallback/hover";
+import { fallbackImplementation } from "./fallback/implementation";
+import { fallbackPrepare } from "./fallback/prepare";
+import { fallbackReferences } from "./fallback/references";
+import { fallbackTypeDefinition } from "./fallback/type-definition";
+import { fallbackWorkspaceSymbols } from "./fallback/workspace-symbols";
 
 /**
  * Tries the primary language-service port, then a degraded graph port.
- * `provider` reflects whichever adapter answered the last call.
+ * Method bodies: flat `impl/fallback-*.ts` (same style as `flow/`).
  */
 export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
   public readonly id = "fallback-code-navigation";
@@ -31,150 +40,123 @@ export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
     this.provider = options.primary.provider;
   }
 
-  public async definition(
-    input: CodeNavigationQuery,
-    options?: CodeNavigationCallOptions,
-  ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () => this.options.primary.definition(input, options),
-      () => this.options.fallback.definition(input, options),
-    );
-  }
-
-  public async typeDefinition(
-    input: CodeNavigationQuery,
-    options?: CodeNavigationCallOptions,
-  ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () =>
-        this.options.primary.typeDefinition?.(input, options) ??
-        Promise.resolve([]),
-      () =>
-        this.options.fallback.typeDefinition?.(input, options) ??
-        Promise.resolve([]),
-    );
+  public capability(): CodeNavigationCapability {
+    return fallbackCapability(this.options.primary);
   }
 
   public async prepare(
     relativePath: string,
     options?: CodeNavigationCallOptions,
   ): Promise<void> {
-    try {
-      await this.options.primary.prepare?.(relativePath, options);
-    } catch {
-      // Primary prepare failure must not block graph fallback.
-    }
-    await this.options.fallback.prepare?.(relativePath, options);
+    return fallbackPrepare({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      relativePath,
+      options,
+    });
+  }
+
+  public async definition(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    return fallbackDefinition({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
+  }
+
+  public async typeDefinition(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    return fallbackTypeDefinition({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 
   public async references(
     input: CodeNavigationQuery,
     options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () => this.options.primary.references(input, options),
-      () => this.options.fallback.references(input, options),
-    );
+    return fallbackReferences({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 
   public async hover(
     input: CodeNavigationQuery,
     options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
-    try {
-      const hover = await this.options.primary.hover?.(input, options);
-      if (hover) {
-        this.provider = this.options.primary.provider;
-        return hover;
-      }
-    } catch {
-      // Fall through to graph hover.
-    }
-    this.provider = this.options.fallback.provider;
-    return this.options.fallback.hover?.(input, options);
-  }
-
-  public capability(): CodeNavigationCapability {
-    return (
-      this.options.primary.capability?.() ?? {
-        status: "available",
-        provider: this.options.primary.provider,
-        reason: "language_server_attached",
-        operations: CODE_NAVIGATION_OPERATIONS,
-      }
-    );
+    return fallbackHover({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 
   public async documentSymbols(
     input: CodeNavigationDocumentQuery,
     options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () =>
-        this.options.primary.documentSymbols?.(input, options) ??
-        Promise.resolve([]),
-      () =>
-        this.options.fallback.documentSymbols?.(input, options) ??
-        Promise.resolve([]),
-    );
+    return fallbackDocumentSymbols({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 
   public async workspaceSymbols(
     input: CodeNavigationWorkspaceQuery,
     options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () =>
-        this.options.primary.workspaceSymbols?.(input, options) ??
-        Promise.resolve([]),
-      () =>
-        this.options.fallback.workspaceSymbols?.(input, options) ??
-        Promise.resolve([]),
-    );
+    return fallbackWorkspaceSymbols({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 
   public async implementation(
     input: CodeNavigationQuery,
     options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () =>
-        this.options.primary.implementation?.(input, options) ??
-        Promise.resolve([]),
-      () =>
-        this.options.fallback.implementation?.(input, options) ??
-        Promise.resolve([]),
-    );
+    return fallbackImplementation({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 
   public async callHierarchy(
     input: CodeNavigationQuery,
     options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () =>
-        this.options.primary.callHierarchy?.(input, options) ??
-        Promise.resolve([]),
-      () =>
-        this.options.fallback.callHierarchy?.(input, options) ??
-        Promise.resolve([]),
-    );
-  }
-
-  private async firstNonEmpty(
-    primary: () => Promise<readonly CodeNavigationLocation[]>,
-    fallback: () => Promise<readonly CodeNavigationLocation[]>,
-  ): Promise<readonly CodeNavigationLocation[]> {
-    try {
-      const locations = await primary();
-      if (locations.length > 0) {
-        this.provider = this.options.primary.provider;
-        return locations;
-      }
-    } catch {
-      // Language servers can fail closed; graph remains available.
-    }
-    this.provider = this.options.fallback.provider;
-    return fallback();
+    return fallbackCallHierarchy({
+      primary: this.options.primary,
+      fallback: this.options.fallback,
+      sink: this,
+      input,
+      options,
+    });
   }
 }

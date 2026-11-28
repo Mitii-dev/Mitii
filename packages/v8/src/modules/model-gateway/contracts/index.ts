@@ -33,5 +33,5 @@ export type {
   ModelAgenticTier,
 } from "./types";
 
-export { noopModuleLogger } from "./ports/ModuleLoggerPort";
-export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

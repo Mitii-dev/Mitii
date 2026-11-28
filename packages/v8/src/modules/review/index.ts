@@ -9,12 +9,16 @@ export {
   REVIEW_STATUSES,
   REVIEW_RECORD_STATUSES,
   REVIEW_REASON_CODES,
+  REVIEW_REASON,
   REVIEW_ERROR_CODES,
   REVIEW_WARNING_CODES,
+  REVIEW_MESSAGES,
+  REVIEW_STAGES,
   REVIEW_SARIF_TOOL_NAME,
   REVIEW_SARIF_INFORMATION_URI,
   REVIEW_SARIF_FINGERPRINT_KEY,
 } from "./constants";
+export type { ReviewStageName } from "./constants";
 
 export {
   DEFAULT_REVIEW_EFFORT,
@@ -28,10 +32,10 @@ export {
   DEFAULT_REVIEW_HIDE_SEVERITIES,
 } from "./defaults";
 
-export { REVIEW_POLICY, REVIEW_EFFORT_ROUNDS, effortToRounds } from "./policy";
+export { REVIEW_POLICY, REVIEW_EFFORT_ROUNDS, effortToRounds } from "./rules";
 
-export { ReviewPipeline } from "./pipeline/ReviewPipeline";
-export type { ReviewPipelineDependencies } from "./pipeline/ReviewPipeline";
+export { ReviewPipeline } from "./flow/ReviewPipeline";
+export type { ReviewPipelineDependencies } from "./flow/ReviewPipeline";
 
 export {
   exportSarif,
@@ -86,4 +90,6 @@ export type {
   ReviewDiffPort,
   ReviewLlmPort,
   ReviewErrorCode,
+  ModuleLoggerPort,
 } from "./contracts";
+export { noopModuleLogger } from "./contracts";

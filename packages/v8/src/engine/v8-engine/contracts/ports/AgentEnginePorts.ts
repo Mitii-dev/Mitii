@@ -95,6 +95,7 @@ export interface AgentEngineDecisionPort {
   }): ExecutionDecision;
   widen?(input: {
     previous: ExecutionDecision;
+    upgradePlateId: string;
     extraPaths?: readonly string[];
     extraAllowedRoots?: readonly string[];
     extraNetworkHosts?: readonly string[];

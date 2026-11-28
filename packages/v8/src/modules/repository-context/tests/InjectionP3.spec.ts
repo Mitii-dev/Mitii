@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { HybridRetriever } from "../internal/hybrid-retrieval/HybridRetriever";
+import { HybridRetriever } from "../helpers/hybrid-retrieval/HybridRetriever";
 import {
   CrossEncoderRetrievalReranker,
   type CrossEncoderDocumentScorer,
-} from "../internal/hybrid-retrieval/CrossEncoderRetrievalReranker";
+} from "../helpers/hybrid-retrieval/CrossEncoderRetrievalReranker";
 import type {
   HybridRetrievalCandidate,
   RetrievalSource,
   RetrievalSourceResult,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 
 class StaticRetrievalSource implements RetrievalSource {
   constructor(

@@ -55,12 +55,32 @@ export const mutationBudgetSchema = z
 
 export type MutationBudget = z.infer<typeof mutationBudgetSchema>;
 
+/**
+ * Unified scopes (S2C-SCOPES). Dual-written alongside legacy pathScopes /
+ * mutationPathScopes / protectedPathGlobs during migration.
+ */
+export const unifiedGrantScopesSchema = z
+  .object({
+    readPaths: z.array(z.string().min(1)).min(1),
+    writePaths: z.array(z.string().min(1)).optional(),
+    protectedPaths: z.array(z.string().min(1)).optional(),
+    commandPrefixes: z.array(z.string().min(1)).optional(),
+    networkHosts: z.array(z.string().min(1)).optional(),
+    mcpServerIds: z.array(z.string().min(1)).optional(),
+    extraAllowedRoots: z.array(z.string().min(1)).max(20).optional(),
+  })
+  .strict();
+
+export type UnifiedGrantScopes = z.infer<typeof unifiedGrantScopesSchema>;
+
 export const toolGrantSchema = z
   .object({
     maximumWorkspaceEffect: workspaceEffectSchema,
     allowedTools: z.array(z.string().min(1)),
     allowedEffects: z.array(toolEffectSchema),
+    /** @deprecated Prefer scopes.readPaths */
     pathScopes: z.array(z.string().min(1)).min(1),
+    /** @deprecated Prefer scopes.writePaths */
     mutationPathScopes: z.array(z.string().min(1)).min(1).optional(),
     commandRules: z.array(commandRuleSchema).optional(),
     networkHosts: z.array(z.string().min(1)).optional(),
@@ -80,6 +100,7 @@ export const toolGrantSchema = z
     approvalSkipCategories: z.array(approvalSkipCategorySchema).optional(),
     /**
      * Paths that still require approval under auto-approve write skips.
+     * @deprecated Prefer scopes.protectedPaths
      */
     protectedPathGlobs: z.array(z.string().min(1)).optional(),
     /**
@@ -92,6 +113,8 @@ export const toolGrantSchema = z
      * grant_expansion approval. Never inferred — only user-approved.
      */
     extraAllowedRoots: z.array(z.string().min(1)).max(20).optional(),
+    /** Unified scopes (S2C). Attached at emit when missing. */
+    scopes: unifiedGrantScopesSchema.optional(),
   })
   .strict();
 

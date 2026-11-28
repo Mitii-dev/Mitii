@@ -59,5 +59,7 @@ export type {
 export { ReviewError, reviewErrorCodeSchema } from "./errors/ReviewError";
 export type { ReviewErrorCode } from "./errors/ReviewError";
 
-export type { ReviewRecordStorePort } from "./ports/ReviewRecordStorePort";
-export type { ReviewDiffPort, ReviewLlmPort } from "./ports/ReviewPorts";
+export type { ReviewRecordStorePort } from "../ports/ReviewRecordStorePort";
+export type { ReviewDiffPort, ReviewLlmPort } from "../ports/ReviewPorts";
+export { noopModuleLogger } from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

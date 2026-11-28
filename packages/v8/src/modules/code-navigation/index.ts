@@ -4,8 +4,16 @@ export {
   CODE_NAVIGATION_STATUSES,
   CODE_NAVIGATION_PROVIDERS,
   CODE_NAVIGATION_REASON_CODES,
+  CODE_NAVIGATION_REASON,
   CODE_NAVIGATION_ERROR_CODES,
   CODE_NAVIGATION_CAPABILITY_STATUSES,
+  CODE_NAVIGATION_WARNING_CODES,
+  CODE_NAVIGATION_MESSAGES,
+  CODE_NAVIGATION_STAGES,
+} from "./constants";
+export type {
+  CodeNavigationReasonCodeConst,
+  CodeNavigationStageName,
 } from "./constants";
 
 export {
@@ -16,17 +24,17 @@ export {
   DEFAULT_NAVIGATION_REQUEST_TIMEOUT_MS,
 } from "./defaults";
 
-export { CODE_NAVIGATION_POLICY } from "./policy";
+export { CODE_NAVIGATION_POLICY } from "./rules";
 
 export {
   createRequestLimiter,
   RequestLimiterTimeoutError,
   RequestLimiterAbortError,
-} from "./internal/createRequestLimiter";
-export type { RequestLimiter } from "./internal/createRequestLimiter";
+} from "./helpers/createRequestLimiter";
+export type { RequestLimiter } from "./helpers/createRequestLimiter";
 
-export { CodeNavigationPipeline } from "./pipeline/CodeNavigationPipeline";
-export type { CodeNavigationPipelineDependencies } from "./pipeline/CodeNavigationPipeline";
+export { CodeNavigationPipeline } from "./flow/CodeNavigationPipeline";
+export type { CodeNavigationPipelineDependencies } from "./flow/CodeNavigationPipeline";
 
 export { GraphCodeNavigationAdapter } from "./adapters/GraphCodeNavigationAdapter";
 export type { GraphCodeNavigationAdapterOptions } from "./adapters/GraphCodeNavigationAdapter";
@@ -40,6 +48,7 @@ export {
   codeNavigationResultSchema,
   CodeNavigationError,
   codeNavigationErrorCodeSchema,
+  noopModuleLogger,
 } from "./contracts";
 export type {
   CodeNavigationInput,
@@ -56,4 +65,5 @@ export type {
   CodeNavigationPort,
   CodeNavigationCapability,
   CodeNavigationCallOptions,
+  ModuleLoggerPort,
 } from "./contracts";

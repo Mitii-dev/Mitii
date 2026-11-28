@@ -82,8 +82,8 @@ describe("P1 Medium close-loop goldens", () => {
 
   it("sizes discovery and per-step bind envelopes for medium × band", () => {
     const discovery = resolveDiscoveryPassBudget("medium", "standard");
-    expect(discovery.maxModelTurns).toBe(4);
-    expect(discovery.maxFileReads).toBe(8);
+    expect(discovery.maxModelTurns).toBe(6);
+    expect(discovery.maxFileReads).toBe(12);
 
     const bind = resolveMutateReadinessBudget("medium", "standard");
     expect(bind.readonlyTurnsBeforeGate).toBe(4);

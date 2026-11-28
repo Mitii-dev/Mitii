@@ -4,8 +4,8 @@ import { executionDecisionSchema } from "../../contracts";
 import {
   detectBehavioralAskSignals,
   looksLikeBehavioralAsk,
-} from "../../actions/DetectBehavioralAsk";
-import { resolveVerificationRequirement } from "../../actions/ResolveVerificationRequirement";
+} from "../../helpers/DetectBehavioralAsk";
+import { resolveVerificationRequirement } from "../../helpers/ResolveVerificationRequirement";
 import { createUnderstanding } from "../fixtures/decisionCases";
 
 describe("detectBehavioralAskSignals", () => {
@@ -74,7 +74,7 @@ describe("resolveVerificationRequirement behavior evidence", () => {
       route: "answer",
       mode: "ask",
       understanding,
-      maximumWorkspaceEffect: "none",
+      maximumWorkspaceEffect: "read",
       message: "Does the /api/login endpoint return 404?",
     });
     expect(result.verification.required).toBe(false);

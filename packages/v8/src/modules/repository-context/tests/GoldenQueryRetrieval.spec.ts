@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { HybridRetriever } from "../internal/hybrid-retrieval/HybridRetriever";
-import { RepoGraphRetrievalSource } from "../internal/hybrid-retrieval/sources";
-import { RepositoryContextPipeline } from "../pipeline/context-pipeline/RepositoryContextPipeline";
+import { HybridRetriever } from "../helpers/hybrid-retrieval/HybridRetriever";
+import { RepoGraphRetrievalSource } from "../helpers/hybrid-retrieval/sources";
+import { RepositoryContextPipeline } from "../flow/RepositoryContextPipeline";
 import type {
   ContextAssemblyInput,
   ContextAssemblyResult,
-} from "../internal/context-assembly/types";
+} from "../helpers/context-assembly/types";
 import type {
   ContextSelectionInput,
   ContextSelectionResult,
-} from "../internal/context-selection/types";
+} from "../helpers/context-selection/types";
 import type {
   HybridRetrievalInput,
   HybridRetrievalResult,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 import type {
   RepositoryStateDescriptor,
   RepositoryStateReference,

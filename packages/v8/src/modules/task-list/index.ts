@@ -34,10 +34,10 @@ export {
   DEFAULT_MAX_TASK_PATH_CHARS,
 } from "./defaults";
 
-export { TASK_LIST_POLICY, resolveMaxTasks } from "./policy";
+export { TASK_LIST_POLICY, resolveMaxTasks } from "./rules";
 
-export { TaskListPipeline } from "./pipeline/TaskListPipeline";
-export type { TaskListPipelineDependencies } from "./pipeline/TaskListPipeline";
+export { TaskListPipeline } from "./flow/TaskListPipeline";
+export type { TaskListPipelineDependencies } from "./flow/TaskListPipeline";
 
 export {
   taskListApplyInputSchema,
@@ -95,6 +95,6 @@ export {
   clipTaskTitle,
   isTerminalTaskStatus,
   isValidStatusTransition,
-} from "./actions/1-apply-update";
+} from "./flow/steps/1-apply-update";
 
 export { collectConcretePlanStepCandidates } from "./planStepCandidates";

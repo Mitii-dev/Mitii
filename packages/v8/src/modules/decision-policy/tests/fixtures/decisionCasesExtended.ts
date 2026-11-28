@@ -81,7 +81,7 @@ export const DECISION_EVALUATION_CASES_EXTENDED: DecisionCaseFixture[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
     },
   },
@@ -123,9 +123,9 @@ export const DECISION_EVALUATION_CASES_EXTENDED: DecisionCaseFixture[] = [
       },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       planningDepth: "none",
-      maximumWorkspaceEffect: "none",
+      maximumWorkspaceEffect: "read",
     },
   },
   {
@@ -147,7 +147,7 @@ export const DECISION_EVALUATION_CASES_EXTENDED: DecisionCaseFixture[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       planningDepth: "none",
     },
@@ -171,7 +171,7 @@ export const DECISION_EVALUATION_CASES_EXTENDED: DecisionCaseFixture[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
     },
   },

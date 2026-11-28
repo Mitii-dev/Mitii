@@ -8,9 +8,11 @@ export interface PendingPlanBannerProps {
   busy?: boolean;
   /** Sentence shown after the bold "Plan ready." lead. */
   description?: ReactNode;
+  /** Primary CTA label (default Build). */
+  primaryLabel?: string;
 }
 
-const DEFAULT_DESCRIPTION = 'Switch to Agent or execute to implement it.';
+const DEFAULT_DESCRIPTION = 'Build to implement it.';
 
 /** Strip shown when a plan is waiting for hand-off to Agent mode. */
 export function PendingPlanBanner({
@@ -19,6 +21,7 @@ export function PendingPlanBanner({
   onDismiss,
   busy,
   description = DEFAULT_DESCRIPTION,
+  primaryLabel = 'Build',
 }: PendingPlanBannerProps) {
   if (!visible) return null;
 
@@ -34,7 +37,7 @@ export function PendingPlanBanner({
           disabled={busy}
           onClick={onExecuteInAgent}
         >
-          Execute in Agent
+          {primaryLabel}
         </button>
         {onDismiss ? (
           <button

@@ -10,6 +10,8 @@ export const DESKTOP_DEFAULT_OVERRIDES: Readonly<Record<string, unknown>> = {
   'mitii.provider.type': 'openai-compatible',
   'mitii.provider.preset': 'ollama',
   'mitii.provider.baseUrl': 'http://127.0.0.1:11434/v1',
+  // Desktop ships bundled MiniLM — keep vectors on unless source is disabled.
+  'mitii.semanticIndex.enabled': true,
 };
 
 /** Desktop persists exactly the catalog settings tree (no Desktop-only fork). */

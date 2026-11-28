@@ -42,8 +42,8 @@ export type {
 
 export {
   noopModuleLogger,
-} from "./ports/ModuleLoggerPort";
-export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+} from "../ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";
 
 export {
   windowBudgetErrorCodeSchema,

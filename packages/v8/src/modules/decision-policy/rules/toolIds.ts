@@ -1,0 +1,25 @@
+/**
+ * @deprecated Prefer `./tool-families` (S2C-FAMILIES). Kept as re-export shim.
+ */
+export {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  DISCOVERY_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
+  GIT_READ_TOOL_IDS,
+  MEMORY_READ_TOOL_IDS,
+  META_TOOL_IDS,
+  METACOGNITION_TOOL_IDS,
+  MUTATION_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
+  PROCESS_READ_TOOL_IDS,
+  PROCESS_TOOL_IDS,
+  READ_ONLY_TOOL_IDS,
+  REVIEW_TOOL_IDS,
+  TOOL_FAMILIES,
+  expandToolFamilies,
+} from "./tool-families";
+export type { ToolFamilyId } from "./tool-families";

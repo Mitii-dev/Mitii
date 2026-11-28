@@ -12,6 +12,11 @@ import {
 import type {
   TaskList,
 } from "../../../modules/task-list";
+import {
+  appendTaskHandoff,
+  buildTaskHandoffNote,
+} from "../../../runtime";
+import type { TaskHandoffNote } from "../../../runtime";
 import type { ToolResult } from "../../tool-runtime";
 import type { VerificationDiagnostic } from "../../../modules/verification";
 
@@ -62,6 +67,7 @@ export function maybeAutoAdvanceTaskList(params: {
   taskList?: TaskList;
   warnings: string[];
   completedStepIds?: string[];
+  handoff?: TaskHandoffNote;
 } {
   if (!(params.enabled ?? TASK_LIST_POLICY.autoAdvanceOnMutationSuccess)) {
     return { advanced: false, warnings: [] };
@@ -131,15 +137,36 @@ export function maybeAutoAdvanceTaskList(params: {
   const completedStepIds = params.taskListRef
     ? recordCompletedPlanSteps(params.taskListRef, toComplete)
     : toComplete.map((item) => item.sourceRef ?? item.id);
-  return withPlanRefill({
-    advanced: result.reasonCodes.includes("task_list_patched"),
-    taskList: result.taskList,
-    warnings: result.warnings,
-    plan: params.plan,
-    maxTasks: params.maxTasks,
-    taskListRef: params.taskListRef,
-    completedStepIds,
+
+  // S13-ENGINE — record handoff via runtime helpers (not a second advance).
+  const fromTask =
+    toComplete.find((item) => item.status === "active") ?? toComplete[0]!;
+  const handoff = buildTaskHandoffNote({
+    fromTaskId: fromTask.id,
+    toTaskId: nextPending?.id,
+    doneSummary: `Settled writes: ${changedFiles.slice(0, 4).join(", ")}`,
+    artifactsWritten: changedFiles.slice(0, 16),
+    evidenceRefs: completedStepIds.slice(0, 8),
   });
+  if (params.taskListRef) {
+    params.taskListRef.handoffs = appendTaskHandoff(
+      params.taskListRef.handoffs,
+      handoff,
+    );
+  }
+
+  return {
+    ...withPlanRefill({
+      advanced: result.reasonCodes.includes("task_list_patched"),
+      taskList: result.taskList,
+      warnings: result.warnings,
+      plan: params.plan,
+      maxTasks: params.maxTasks,
+      taskListRef: params.taskListRef,
+      completedStepIds,
+    }),
+    handoff,
+  };
 }
 
 /**

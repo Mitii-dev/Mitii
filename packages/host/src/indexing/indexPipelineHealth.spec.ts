@@ -217,6 +217,65 @@ describe('readIndexPipelineHealth', () => {
     }
   });
 
+  it('treats intentional semantic-disabled as embeddings unavailable, not degraded', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-health-embed-off-'));
+    const mitiiDir = join(root, '.mitii');
+    mkdirSync(mitiiDir, { recursive: true });
+    try {
+      writeMeta(mitiiDir, {
+        workspaceId: 'ws-off',
+        lastEmbeddingError: 'Semantic index is disabled or not configured.',
+        lastIndexingResult: {
+          schemaVersion: 1,
+          workspace: 'ws-off',
+          workspaceSnapshotId: 'snap-off',
+          status: 'complete',
+          indexedAt: Date.now(),
+          cleanupAllowed: true,
+          fileResultsTruncated: false,
+          rootResults: [
+            {
+              rootId: 'root',
+              status: 'complete',
+              cleanupPerformed: false,
+              codeIndexRemovedFiles: 0,
+              textIndexRemovedDocuments: 0,
+              textIndexRemovedChunks: 0,
+              codeIndexRevision: 2,
+              finalTextRevision: 2,
+              embeddedChunks: 0,
+              vectorsDeleted: 0,
+              warnings: [],
+            },
+          ],
+          fileResults: [],
+          warnings: [],
+          statistics: {
+            availableFiles: 1,
+            selectedFiles: 1,
+            skippedFiles: 0,
+            processedFiles: 1,
+            completeFiles: 1,
+            partialFiles: 0,
+            failedFiles: 0,
+            cancelledFiles: 0,
+            skippedByPolicy: 0,
+          },
+        } as IndexRuntimeMetadata['lastIndexingResult'],
+      });
+
+      const health = readIndexPipelineHealth({
+        workspaceRoot: root,
+        probeNative: false,
+      });
+      expect(health.pipelines.embeddings.status).toBe('unavailable');
+      expect(health.lastError).toBeUndefined();
+      expect(health.overall).toBe('lexical_only');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('surfaces lastEmbeddingError as embeddings degraded', () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-health-embed-err-'));
     const mitiiDir = join(root, '.mitii');

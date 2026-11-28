@@ -1,12 +1,4 @@
-import type {
-  RepoGraph,
-  RepoGraphFileNode,
-  RepoGraphSymbolNode,
-} from "../../repository-state";
-import {
-  CODE_NAVIGATION_OPERATIONS,
-} from "../constants";
-import { CODE_NAVIGATION_POLICY } from "../policy";
+import type { RepoGraph } from "../../repository-state";
 import type {
   CodeNavigationCallOptions,
   CodeNavigationCapability,
@@ -17,6 +9,15 @@ import type {
   CodeNavigationQuery,
   CodeNavigationWorkspaceQuery,
 } from "../contracts";
+import { graphCallHierarchy } from "./graph/call-hierarchy";
+import { graphCapability } from "./graph/capability";
+import { graphDefinition } from "./graph/definition";
+import { graphDocumentSymbols } from "./graph/document-symbols";
+import { graphHover } from "./graph/hover";
+import { graphImplementation } from "./graph/implementation";
+import { graphReferences } from "./graph/references";
+import { graphTypeDefinition } from "./graph/type-definition";
+import { graphWorkspaceSymbols } from "./graph/workspace-symbols";
 
 export interface GraphCodeNavigationAdapterOptions {
   loadGraphs: () =>
@@ -24,6 +25,9 @@ export interface GraphCodeNavigationAdapterOptions {
     | Promise<readonly RepoGraph[]>;
 }
 
+/**
+ * Repo-graph `CodeNavigationPort`. Method bodies: flat `impl/graph-*.ts` (same style as `flow/`).
+ */
 export class GraphCodeNavigationAdapter implements CodeNavigationPort {
   public readonly id = "repo-graph-code-navigation";
   public readonly provider = "repo_graph" as const;
@@ -33,360 +37,62 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
   ) {}
 
   public capability(): CodeNavigationCapability {
-    return {
-      status: "degraded",
-      provider: "repo_graph",
-      reason: "language_server_not_configured",
-      operations: CODE_NAVIGATION_OPERATIONS,
-    };
+    return graphCapability();
   }
 
   public async definition(
     input: CodeNavigationQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    const symbols = await this.resolveSymbols(input);
-    return this.uniqueLocations(
-      symbols.map((symbol) => this.toLocation(symbol.file, symbol.node)),
-    );
+    return graphDefinition(this.options.loadGraphs, input);
   }
 
   public async typeDefinition(
     input: CodeNavigationQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    // Graph has no typed-expression edges. Only return type-like symbols at the
-    // caret; otherwise empty so callers prefer a language-service port.
-    const symbols = await this.resolveSymbols(input);
-    const typed = symbols.filter((symbol) =>
-      isTypeLikeSymbolKind(symbol.node.symbolKind),
-    );
-    return this.uniqueLocations(
-      typed.map((symbol) => this.toLocation(symbol.file, symbol.node)),
-    );
+    return graphTypeDefinition(this.options.loadGraphs, input);
   }
 
   public async references(
     input: CodeNavigationQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    const graphs = await this.options.loadGraphs();
-    const symbols = await this.resolveSymbols(input, graphs);
-    const symbolIds = new Set(symbols.map((symbol) => symbol.node.id));
-    const locations: CodeNavigationLocation[] = [];
-
-    if (input.includeDeclaration !== false) {
-      locations.push(
-        ...symbols.map((symbol) => this.toLocation(symbol.file, symbol.node)),
-      );
-    }
-
-    for (const graph of graphs) {
-      const files = fileIndex(graph);
-      const nodes = symbolIndex(graph);
-      for (const edge of graph.edges) {
-        if (
-          !CODE_NAVIGATION_POLICY.graphEdgeTypes.includes(
-            edge.type as (typeof CODE_NAVIGATION_POLICY.graphEdgeTypes)[number],
-          )
-        ) {
-          continue;
-        }
-        const relatedId = symbolIds.has(edge.toNodeId)
-          ? edge.fromNodeId
-          : symbolIds.has(edge.fromNodeId)
-            ? edge.toNodeId
-            : undefined;
-        if (!relatedId) continue;
-        const related = nodes.get(relatedId);
-        const file = related ? files.get(related.fileId) : undefined;
-        if (!related || !file) continue;
-        locations.push(this.toLocation(file, related, edge.evidence[0]?.line));
-      }
-    }
-
-    return this.uniqueLocations(locations);
+    return graphReferences(this.options.loadGraphs, input);
   }
 
   public async hover(
     input: CodeNavigationQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
-    const [symbol] = await this.resolveSymbols(input);
-    if (!symbol) return undefined;
-    const signature = symbol.node.signature?.trim();
-    const contents = signature
-      ? signature
-      : `${symbol.node.symbolKind} ${symbol.node.name}`;
-    return { contents };
+    return graphHover(this.options.loadGraphs, input);
   }
 
   public async documentSymbols(
     input: CodeNavigationDocumentQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    const graphs = await this.options.loadGraphs();
-    const normalizedPath = normalizeRelativePath(input.relativePath);
-    const locations: CodeNavigationLocation[] = [];
-    for (const graph of graphs) {
-      const files = fileIndex(graph);
-      for (const node of graph.nodes) {
-        if (node.kind !== "symbol") continue;
-        const file = files.get(node.fileId);
-        if (!file) continue;
-        if (normalizeRelativePath(file.relativePath) !== normalizedPath) continue;
-        locations.push(this.toLocation(file, node));
-      }
-    }
-    return this.uniqueLocations(locations);
+    return graphDocumentSymbols(this.options.loadGraphs, input);
   }
 
   public async workspaceSymbols(
     input: CodeNavigationWorkspaceQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    const graphs = await this.options.loadGraphs();
-    const needle = input.query.trim().toLowerCase();
-    const locations: CodeNavigationLocation[] = [];
-    for (const graph of graphs) {
-      const files = fileIndex(graph);
-      for (const node of graph.nodes) {
-        if (node.kind !== "symbol") continue;
-        if (!node.name.toLowerCase().includes(needle)) continue;
-        const file = files.get(node.fileId);
-        if (!file) continue;
-        locations.push(this.toLocation(file, node));
-      }
-    }
-    return this.uniqueLocations(locations);
+    return graphWorkspaceSymbols(this.options.loadGraphs, input);
   }
 
   public async implementation(
     input: CodeNavigationQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    const graphs = await this.options.loadGraphs();
-    const symbols = await this.resolveSymbols(input, graphs);
-    let frontier = new Set(symbols.map((symbol) => symbol.node.id));
-    const locations: CodeNavigationLocation[] = [];
-    const seen = new Set(frontier);
-
-    for (let hop = 0; hop < CODE_NAVIGATION_POLICY.graphHopDepth && frontier.size > 0; hop += 1) {
-      const next = new Set<string>();
-      for (const graph of graphs) {
-        const files = fileIndex(graph);
-        const nodes = symbolIndex(graph);
-        for (const edge of graph.edges) {
-          if (edge.type !== "implements" && edge.type !== "extends") continue;
-          if (!frontier.has(edge.toNodeId) || seen.has(edge.fromNodeId)) continue;
-          const related = nodes.get(edge.fromNodeId);
-          const file = related ? files.get(related.fileId) : undefined;
-          if (!related || !file) continue;
-          seen.add(edge.fromNodeId);
-          next.add(edge.fromNodeId);
-          locations.push(this.toLocation(file, related));
-        }
-      }
-      frontier = next;
-    }
-
-    return this.uniqueLocations(locations);
+    return graphImplementation(this.options.loadGraphs, input);
   }
 
   public async callHierarchy(
     input: CodeNavigationQuery,
     _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    const graphs = await this.options.loadGraphs();
-    const symbols = await this.resolveSymbols(input, graphs);
-    const direction = input.direction ?? "outgoing";
-    let frontier = new Set(symbols.map((symbol) => symbol.node.id));
-    const locations: CodeNavigationLocation[] = [];
-    const seen = new Set<string>();
-
-    for (let hop = 0; hop < CODE_NAVIGATION_POLICY.graphHopDepth && frontier.size > 0; hop += 1) {
-      const next = new Set<string>();
-      for (const graph of graphs) {
-        const files = fileIndex(graph);
-        const nodes = symbolIndex(graph);
-        for (const edge of graph.edges) {
-          if (edge.type !== "calls") continue;
-          const fromId = direction === "outgoing" ? edge.fromNodeId : edge.toNodeId;
-          const toId = direction === "outgoing" ? edge.toNodeId : edge.fromNodeId;
-          if (!frontier.has(fromId) || seen.has(toId)) continue;
-          const related = nodes.get(toId);
-          const file = related ? files.get(related.fileId) : undefined;
-          if (!related || !file) continue;
-          seen.add(toId);
-          next.add(toId);
-          locations.push(this.toLocation(file, related));
-        }
-      }
-      frontier = next;
-    }
-
-    return this.uniqueLocations(locations);
+    return graphCallHierarchy(this.options.loadGraphs, input);
   }
-
-  private async resolveSymbols(
-    input: CodeNavigationQuery,
-    graphs?: readonly RepoGraph[],
-  ): Promise<
-    Array<{ node: RepoGraphSymbolNode; file: RepoGraphFileNode }>
-  > {
-    const loaded = graphs ?? (await this.options.loadGraphs());
-    const normalizedPath = normalizeRelativePath(input.relativePath);
-    const matches: Array<{
-      node: RepoGraphSymbolNode;
-      file: RepoGraphFileNode;
-    }> = [];
-
-    for (const graph of loaded) {
-      const files = fileIndex(graph);
-      for (const node of graph.nodes) {
-        if (node.kind !== "symbol") continue;
-        const file = files.get(node.fileId);
-        if (!file) continue;
-        if (
-          normalizeRelativePath(file.relativePath) !== normalizedPath &&
-          !input.symbolName
-        ) {
-          continue;
-        }
-        if (
-          input.symbolName &&
-          node.name !== input.symbolName &&
-          normalizeRelativePath(file.relativePath) !== normalizedPath
-        ) {
-          continue;
-        }
-        if (
-          normalizeRelativePath(file.relativePath) === normalizedPath &&
-          coversLine(node, input.line)
-        ) {
-          matches.push({ node, file });
-          continue;
-        }
-        if (
-          input.symbolName &&
-          node.name === input.symbolName
-        ) {
-          matches.push({ node, file });
-        }
-      }
-    }
-
-    const positional = matches.filter(
-      (match) =>
-        normalizeRelativePath(match.file.relativePath) === normalizedPath &&
-        coversLine(match.node, input.line),
-    );
-    if (positional.length > 0) {
-      const column = input.column ?? 1;
-      positional.sort((left, right) => {
-        // Prefer symbols whose declaration starts on the caret line (name site).
-        const leftOnLine = left.node.startLine === input.line ? 0 : 1;
-        const rightOnLine = right.node.startLine === input.line ? 0 : 1;
-        if (leftOnLine !== rightOnLine) return leftOnLine - rightOnLine;
-        // Tighter span wins; with an explicit column, prefer smaller bodies.
-        const spanDelta = span(left.node) - span(right.node);
-        if (spanDelta !== 0) return spanDelta;
-        if (column > 1) {
-          // Without symbol columns on the graph, break ties by declaration order.
-          return (left.node.startLine ?? 0) - (right.node.startLine ?? 0);
-        }
-        return 0;
-      });
-      return [positional[0]!];
-    }
-    return matches;
-  }
-
-  private toLocation(
-    file: RepoGraphFileNode,
-    symbol: RepoGraphSymbolNode,
-    line = symbol.startLine,
-  ): CodeNavigationLocation {
-    return {
-      rootId: file.rootId,
-      relativePath: file.relativePath,
-      startLine: line ?? symbol.startLine ?? 1,
-      ...(symbol.endLine ? { endLine: symbol.endLine } : {}),
-      symbolName: symbol.name,
-      symbolKind: symbol.symbolKind,
-      ...(symbol.signature ? { preview: symbol.signature } : {}),
-    };
-  }
-
-  private uniqueLocations(
-    locations: readonly CodeNavigationLocation[],
-  ): CodeNavigationLocation[] {
-    const seen = new Set<string>();
-    const result: CodeNavigationLocation[] = [];
-    for (const location of locations) {
-      const key = [
-        location.rootId ?? "",
-        location.relativePath,
-        String(location.startLine),
-        location.symbolName ?? "",
-      ].join("\0");
-      if (seen.has(key)) continue;
-      seen.add(key);
-      result.push(location);
-    }
-    return result.slice(0, CODE_NAVIGATION_POLICY.maximumLocations);
-  }
-}
-
-function fileIndex(
-  graph: RepoGraph,
-): Map<string, RepoGraphFileNode> {
-  const files = new Map<string, RepoGraphFileNode>();
-  for (const node of graph.nodes) {
-    if (node.kind === "file") {
-      files.set(node.fileId, node);
-    }
-  }
-  return files;
-}
-
-function symbolIndex(
-  graph: RepoGraph,
-): Map<string, RepoGraphSymbolNode> {
-  const symbols = new Map<string, RepoGraphSymbolNode>();
-  for (const node of graph.nodes) {
-    if (node.kind === "symbol") {
-      symbols.set(node.id, node);
-    }
-  }
-  return symbols;
-}
-
-function coversLine(
-  symbol: RepoGraphSymbolNode,
-  line: number,
-): boolean {
-  if (!symbol.startLine) return false;
-  const end = symbol.endLine ?? symbol.startLine;
-  return line >= symbol.startLine && line <= end;
-}
-
-function isTypeLikeSymbolKind(kind: string): boolean {
-  const normalized = kind.toLowerCase();
-  return (
-    normalized.includes("class") ||
-    normalized.includes("interface") ||
-    normalized.includes("enum") ||
-    normalized.includes("type") ||
-    normalized.includes("struct")
-  );
-}
-
-function span(symbol: RepoGraphSymbolNode): number {
-  if (!symbol.startLine) return Number.MAX_SAFE_INTEGER;
-  return (symbol.endLine ?? symbol.startLine) - symbol.startLine;
-}
-
-function normalizeRelativePath(path: string): string {
-  return path.replace(/\\/g, "/").replace(/^\.\//, "");
 }

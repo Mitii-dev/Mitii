@@ -19,6 +19,7 @@ import {
   resolveMaximumIndexFiles,
 } from './indexLimits.js';
 import {
+  isSemanticIndexDisabledReason,
   readIndexRuntimeMetadata,
   writeIndexRuntimeMetadata,
 } from './semanticIndex.js';
@@ -262,7 +263,8 @@ export async function runFullWorkspaceIndexOnce(
           : 'unavailable',
       ...(shouldSyncEmbeddings
         ? { lastEmbeddingError: 'Embeddings syncing in background.' }
-        : resolvedSemantic.status === 'unavailable'
+        : resolvedSemantic.status === 'unavailable' &&
+            !isSemanticIndexDisabledReason(resolvedSemantic.reason)
           ? { lastEmbeddingError: resolvedSemantic.reason }
           : {}),
       snapshotFingerprint,
@@ -419,13 +421,16 @@ export async function runFullWorkspaceIndexOnce(
             ? resolvedSemantic.provider.profile.id
             : 'unavailable',
         ...(vectorIndex.status !== 'ready'
-          ? {
-              lastEmbeddingError:
+          ? (() => {
+              const reason =
                 vectorIndex.reason ??
                 (resolvedSemantic.status === 'unavailable'
                   ? resolvedSemantic.reason
-                  : 'Embedding synchronization did not complete.'),
-            }
+                  : 'Embedding synchronization did not complete.');
+              return isSemanticIndexDisabledReason(reason)
+                ? {}
+                : { lastEmbeddingError: reason };
+            })()
           : {}),
         snapshotFingerprint,
         fileCount: snapshot.statistics.files,

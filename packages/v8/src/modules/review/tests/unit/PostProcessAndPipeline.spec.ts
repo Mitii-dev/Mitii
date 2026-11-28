@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryReviewRecordStore } from "../..";
 import { REVIEW_SARIF_TOOL_NAME } from "../../constants";
-import { ReviewPipeline } from "../../pipeline/ReviewPipeline";
-import { anchorFindings } from "../../actions/AnchorFindings";
-import { repairFindingArgs } from "../../actions/RepairFindingArgs";
-import { reflectFindings } from "../../actions/ReflectFindings";
-import { exportSarif } from "../../actions/ExportSarif";
+import { ReviewPipeline } from "../../flow/ReviewPipeline";
+import { anchorFindings } from "../../flow/steps/5-anchor-findings";
+import { repairFindingArgs } from "../../flow/steps/4-repair-findings";
+import { reflectFindings } from "../../flow/steps/6-reflect-findings";
+import { exportSarif } from "../../flow/steps/8-export-sarif";
 
 describe("anchorFindings", () => {
   it("anchors exact snippet in file content", () => {

@@ -11,6 +11,7 @@ export function useRunAbort(deps: Pick<
     'runAbortRef' | 'setSuspension' | 'setMessages' | 'setThreadId' | 'setHistory'
     | 'setHistoryLoading' | 'setTokenUsage' | 'setPendingPlan' | 'setPendingPlanStrategy'
     | 'setPendingTaskList' | 'setCompletedPlanStepIds'
+    | 'setPendingNextActionPrompt'
   > &
   Pick<
     ReturnType<typeof useComposerState>,
@@ -33,6 +34,7 @@ export function useRunAbort(deps: Pick<
     setPendingPlanStrategy,
     setPendingTaskList,
     setCompletedPlanStepIds,
+    setPendingNextActionPrompt,
     setPendingAutoContinue,
     pilotAutoContinueStreakRef,
     setPinnedPaths,
@@ -106,6 +108,7 @@ export function useRunAbort(deps: Pick<
     setPendingPlanStrategy(null);
     setPendingTaskList(null);
     setCompletedPlanStepIds(new Set());
+    setPendingNextActionPrompt(null);
     setPinnedPaths([]);
     setPinnedSkillIds([]);
     setPinnedMcpIds([]);

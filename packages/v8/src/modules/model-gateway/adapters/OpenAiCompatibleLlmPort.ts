@@ -14,7 +14,7 @@ import type {
   ModelRequest,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
-} from "../contracts/types";
+} from "../contracts";
 import {
   approximateTokenCount,
   cancelledEvent,
@@ -23,17 +23,17 @@ import {
   mapHttpStatusError,
   normalizeNonNegativeInteger,
   normalizePositiveInteger,
-} from "../internal/http";
+} from "../helpers/http";
 import {
   formatOpenAiMessage,
   mapOpenAiFinishReason,
   mapOpenAiUsage,
   parseOpenAiSseLine,
   projectOpenAiCompatibleMessages,
-} from "../internal/openAiCompatibleWire";
+} from "../helpers/openAiCompatibleWire";
 import type {
   OpenAiChatCompletionResponse,
-} from "../internal/openAiCompatibleWire";
+} from "../helpers/openAiCompatibleWire";
 
 export { projectOpenAiCompatibleMessages };
 

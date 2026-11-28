@@ -10,11 +10,25 @@ describe('runEventToActivity', () => {
     const tool = runEventToActivity({
       type: 'tool_started',
       toolName: 'read_file',
-      summary: 'README.md',
+      summary: 'path=README.md',
       at: new Date().toISOString(),
     });
     expect(tool?.kind).toBe('tool');
     expect(tool?.title).toContain('read_file');
+    expect(tool?.title).toContain('path=README.md');
+    expect(tool?.detail).toBe('path=README.md');
+
+    const failed = runEventToActivity({
+      type: 'tool_completed',
+      toolName: 'glob_files',
+      summary: 'pattern=**/*.ts',
+      status: 'failed',
+      reasonCode: 'path_not_found',
+      at: new Date().toISOString(),
+    });
+    expect(failed?.title).toMatch(/^Failed glob_files/);
+    expect(failed?.detail).toContain('pattern=**/*.ts');
+    expect(failed?.detail).toContain('path_not_found');
 
     const ctx = runEventToActivity({
       type: 'context_ready',

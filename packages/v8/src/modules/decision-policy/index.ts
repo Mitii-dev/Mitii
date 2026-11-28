@@ -2,6 +2,7 @@ export {
   DECISION_POLICY_SCHEMA_VERSION,
   EXECUTION_ROUTE,
   EXECUTION_ROUTES,
+  LEGACY_ANSWER_ROUTES,
   PLANNING_DEPTHS,
   PLAN_GATES,
   RUN_DISPOSITIONS,
@@ -19,12 +20,21 @@ export {
   MUTATION_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
   GIT_MUTATION_TOOL_IDS,
+  TOOL_FAMILIES,
+  expandToolFamilies,
   DECISION_REASON_CODES,
+  DECISION_REASON,
+  DECISION_POLICY_MESSAGES,
+  DECISION_POLICY_STAGES,
   DECISION_POLICY_ERROR_CODES,
   MUTATION_TASK_INTENTS,
   DIAGNOSIS_TASK_INTENTS,
   ANSWER_TASK_INTENTS,
 } from "./constants";
+export type { DecisionPolicyStageName, ToolFamilyId } from "./constants";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+export type { DecisionPolicyPipelineDependencies } from "./flow/DecisionPolicyPipeline";
 
 export {
   buildVerificationGrant,
@@ -44,6 +54,18 @@ export {
   isExplicitCreateAsk,
   FAST_PATH_DECLINE_REASONS,
   looksLikeVcsHistoryRewrite,
+  extractExplicitMutationFence,
+  hasExplicitEditLimit,
+  looksLikeWorkspaceRootMutation,
+  applyAntiNagAsk,
+  applyContinuityBias,
+  mapPlanningHintToDepth,
+  compileGrantFromPlate,
+  attachUnifiedScopes,
+  deriveUnifiedScopes,
+  toModelToolSurface,
+  applyUpgradePlate,
+  isRegisteredUpgradePlate,
   intersectUserSafetyRules,
   grantNeverWidens,
   formatEffectiveGrant,
@@ -56,22 +78,42 @@ export {
   formatDecisionBriefForPrompt,
   selectGrantProfile,
   GRANT_PROFILES,
-} from "./actions";
+  normalizeExecutionRoute,
+  isAnswerRoute,
+} from "./helpers";
 export type {
   GrantProfile,
   FastPathResolution,
   BehavioralAskSignals,
   FastPathDeclineReason,
-} from "./actions";
+  ContinuityBiasInput,
+  ContinuityBiasResult,
+  ContinuityPreferredRoute,
+} from "./helpers";
 
-export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
+export { DecisionPolicyPipeline } from "./flow/DecisionPolicyPipeline";
+
+export {
+  selectDecisionPlate,
+  listDecisionPlates,
+  DECISION_PLATE_REGISTRY,
+  ROUTE_DECISION_PLATES,
+  clarifyPlate,
+  answerResearchPlate,
+  diagnosePlate,
+  planVisiblePlate,
+  executeMutatePlate,
+  executeVisiblePlate,
+  executeFastPathPlate,
+} from "./plates";
+export type { DecisionPlate, SelectDecisionPlateInput } from "./plates";
 
 export {
   isRepairIntentTaxonomy,
   isArchitectureIntentTaxonomy,
   DECISION_POLICY_PATTERNS,
   WORKSPACE_BUG_FAILURE_LANGUAGE,
-} from "./patterns";
+} from "./rules/patterns";
 
 export {
   decisionPolicyInputSchema,
@@ -127,4 +169,4 @@ export type {
 export type {
   ApprovalPresetCopy,
   VsCodeApprovalPreset,
-} from "./actions";
+} from "./helpers";

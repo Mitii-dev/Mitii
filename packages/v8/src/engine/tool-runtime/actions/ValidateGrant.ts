@@ -3,6 +3,7 @@ import {
   isMcpToolAttached,
   MCP_TOOL_NAME_PREFIX,
 } from "../../../modules/mcp-attach";
+import { checkToolAgainstGrant } from "../../../runtime/tools";
 
 import type { ToolReasonCode } from "../contracts";
 import type { ToolDefinition } from "../internal/ToolCatalog";
@@ -33,13 +34,36 @@ export function validateToolAgainstGrant(params: {
     !mcpName || isMcpToolAttached(tool.name, grant.allowedMcpServerIds);
   const mcpAllowed = mcpEffectOk && mcpAttachOk;
 
-  if (!grant.allowedTools.includes(tool.name) && !mcpAllowed) {
+  if (mcpName && mcpEffectOk && !mcpAttachOk) {
     throw new GrantValidationError(
       "tool_not_allowed",
-      mcpName && mcpEffectOk && !mcpAttachOk
-        ? `MCP tool "${tool.name}" is outside the attached MCP server list.`
-        : `Tool "${tool.name}" is not in the grant allowedTools list.`,
+      `MCP tool "${tool.name}" is outside the attached MCP server list.`,
     );
+  }
+
+  // Primary allowlist + write-effect gate owned by runtime/tools (P8 cutover).
+  if (!mcpAllowed) {
+    const needsWrite =
+      tool.effects.includes("workspace_write") ||
+      tool.effects.includes("git_write") ||
+      tool.effects.includes("external_write");
+    const check = checkToolAgainstGrant({
+      toolId: tool.name,
+      effect: needsWrite ? "mutate" : "read",
+      grant: {
+        allowedTools: grant.allowedTools,
+        allowedEffects: grant.allowedEffects,
+        maximumWorkspaceEffect: grant.maximumWorkspaceEffect,
+      },
+    });
+    if (!check.ok) {
+      throw new GrantValidationError(
+        check.reason ?? "tool_not_allowed",
+        check.reason === "effect_not_granted"
+          ? `Tool "${tool.name}" requires write workspace effect.`
+          : `Tool "${tool.name}" is not in the grant allowedTools list.`,
+      );
+    }
   }
 
   for (const effect of tool.effects) {
@@ -60,18 +84,5 @@ export function validateToolAgainstGrant(params: {
       "network_not_allowed",
       `Tool "${tool.name}" requires networkHosts but none were granted.`,
     );
-  }
-
-  if (
-    tool.effects.includes("workspace_write") ||
-    tool.effects.includes("git_write") ||
-    tool.effects.includes("external_write")
-  ) {
-    if (grant.maximumWorkspaceEffect !== "write") {
-      throw new GrantValidationError(
-        "effect_not_granted",
-        `Tool "${tool.name}" requires write workspace effect.`,
-      );
-    }
   }
 }

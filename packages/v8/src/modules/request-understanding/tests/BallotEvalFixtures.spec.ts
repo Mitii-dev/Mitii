@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { intersectRecommendedSkillTags } from "../intent/intersectRecommendedSkillTags";
+import { intersectRecommendedSkillTags } from "../helpers/intent/intersectRecommendedSkillTags";
 import { BALLOT_EVAL_CASES } from "./fixtures/ballotEvalCases";
 
 describe("ballot eval fixtures", () => {

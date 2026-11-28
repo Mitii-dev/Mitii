@@ -253,9 +253,11 @@ describe("PlanningPipeline strategy and impact", () => {
     );
   });
 
-  it("uses clarify strategy for unclear asks", async () => {
+  it("uses clarify strategy for unclear asks in agent mode", async () => {
     const result = await pipeline.plan(
       baseInput({
+        mode: "agent",
+        route: "execute",
         query: "clean this up",
         evidence: {
           primaryIntent: "maintenance",
@@ -277,6 +279,36 @@ describe("PlanningPipeline strategy and impact", () => {
 
     expect(result.strategy?.strategy).toBe("clarify");
     expect(result.reasonCodes).toContain("plan_strategy_clarify");
+  });
+
+  it("plan mode defers unclear asks to discover_and_plan", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        mode: "plan",
+        route: "plan",
+        query: "clean this up across the repo",
+        evidence: {
+          primaryIntent: "maintenance",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "repository",
+          complexity: "complex",
+          risk: "medium",
+          clarity: "unclear",
+          targets: [],
+          constraints: [],
+          requestedOutcomes: [],
+          recommendsPlanning: true,
+          recommendsVerification: false,
+          changeImpact: ["code"],
+        },
+      }),
+    );
+
+    expect(result.strategy?.strategy).toBe("discover_and_plan");
+    expect(result.reasonCodes).toContain(
+      "plan_strategy_plan_mode_defers_unclear",
+    );
   });
 
   it("resolves deterministically via rules — no strategy LLM call, ever", async () => {

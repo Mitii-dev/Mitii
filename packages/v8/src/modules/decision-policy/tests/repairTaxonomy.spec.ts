@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isArchitectureIntentTaxonomy,
   isRepairIntentTaxonomy,
-} from "../patterns";
+} from "../rules/patterns";
 
 describe("repair vs architecture intent taxonomy", () => {
   it("treats bugfix/diagnose as repair and excludes refactor/migrate", () => {

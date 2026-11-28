@@ -5,8 +5,8 @@
  * thin aliases for hosts during the engine rewrite.
  */
 
-export { WindowBudgetPipeline } from "./pipeline/WindowBudgetPipeline";
-export type { WindowBudgetPipelineDependencies } from "./pipeline/WindowBudgetPipeline";
+export { WindowBudgetPipeline } from "./flow/WindowBudgetPipeline";
+export type { WindowBudgetPipelineDependencies } from "./flow/WindowBudgetPipeline";
 
 export {
   WINDOW_BUDGET_SCHEMA_VERSION,
@@ -47,7 +47,11 @@ export {
   resolveWindowBudgetModelProfile,
   COMPACT_TOOL_LOOP_OUTPUT_HARD_CAP,
   resolveToolLoopMaxOutputTokens,
-} from "./policy";
+  DEFAULT_DISCOVERY_PASS_BUDGET,
+  resolveDiscoveryPassBudget,
+  scaleDiscoveryPassBudget,
+  assertDiscoveryBudgetsMonotonic,
+} from "./rules";
 export type {
   ResolveWindowBudgetPolicyInput,
   ResolvedWindowBudgetPolicy,
@@ -58,12 +62,14 @@ export type {
   WindowBudgetMode,
   WindowBudgetModeOverlay,
   WindowBudgetModelProfile,
-} from "./policy";
+  DiscoveryPassBudget,
+  DiscoveryTaskSize,
+} from "./rules";
 
 export {
   deriveWindowPolicy,
   resolveGenerationCeiling,
-} from "./actions";
+} from "./flow/steps";
 
 export {
   windowBudgetInputSchema,

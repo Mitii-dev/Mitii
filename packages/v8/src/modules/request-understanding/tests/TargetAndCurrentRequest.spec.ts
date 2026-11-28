@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   extractCurrentUserRequestForAnalysis,
   extractPrimaryUserMessage,
-} from "../intent/extractPrimaryUserMessage";
-import type { SuperIntentResult } from "../intent/types";
-import { TaskAnalyzer } from "../task-analyzer/TaskAnalyzer";
+} from "../helpers/intent/extractPrimaryUserMessage";
+import type { SuperIntentResult } from "../helpers/intent/types";
+import { TaskAnalyzer } from "../helpers/task-analyzer/TaskAnalyzer";
 
 function baseIntent(
   overrides: Partial<SuperIntentResult["classification"]> = {},

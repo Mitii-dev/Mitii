@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupReviewFiles } from "../../actions/GroupReviewFiles";
+import { groupReviewFiles } from "../../flow/steps/2-group-files";
 import { reviewInputSchema } from "../../contracts";
 
 describe("groupReviewFiles", () => {

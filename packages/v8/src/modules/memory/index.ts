@@ -7,8 +7,12 @@ export {
   MEMORY_COMMIT_STATUSES,
   MEMORY_OMISSION_REASONS,
   MEMORY_REASON_CODES,
+  MEMORY_REASON,
   MEMORY_ERROR_CODES,
+  MEMORY_MESSAGES,
+  MEMORY_STAGES,
 } from "./constants";
+export type { MemoryReasonCodeConst, MemoryStageName } from "./constants";
 
 export {
   DEFAULT_MEMORY_BUDGET_TOKENS,
@@ -22,9 +26,10 @@ export {
   DEFAULT_EMBED_MAX_CHARS,
 } from "./defaults";
 
-export { MemoryPipeline } from "./pipeline/MemoryPipeline";
-export { MemoryContentPolicy } from "./MemoryContentPolicy";
-export type { MemoryPipelineDependencies } from "./pipeline/MemoryPipeline";
+export { MemoryPipeline } from "./flow/MemoryPipeline";
+export type { MemoryPipelineDependencies } from "./flow/MemoryPipeline";
+export { MemoryContentPolicy } from "./rules/contentPolicy";
+export { MEMORY_THRESHOLDS } from "./rules";
 
 export {
   memoryRetrieveInputSchema,
@@ -41,6 +46,7 @@ export {
   memoryConsolidateResultSchema,
   memoryErrorCodeSchema,
   MemoryError,
+  noopModuleLogger,
 } from "./contracts";
 export type {
   MemoryRetrieveInput,
@@ -61,6 +67,7 @@ export type {
   MemoryStorePort,
   MemoryIdGeneratorPort,
   MemoryEmbeddingPort,
+  ModuleLoggerPort,
 } from "./contracts";
 
 export { InMemoryMemoryStore, HashMemoryEmbedding } from "./adapters";
@@ -80,8 +87,8 @@ export type {
   KnowledgeGraphDeleteEntitiesResult,
   KnowledgeGraphAddObservationsResult,
 } from "./graph";
-export { buildSyntheticMemoryDraft } from "./observe/buildSyntheticMemoryDraft";
+export { buildSyntheticMemoryDraft } from "./flow/steps";
 export type {
   SyntheticObservation,
   SyntheticObservationInput,
-} from "./observe/buildSyntheticMemoryDraft";
+} from "./flow/steps";

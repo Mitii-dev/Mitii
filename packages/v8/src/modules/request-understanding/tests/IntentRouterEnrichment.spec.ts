@@ -6,10 +6,10 @@ import type {
   ModelEvent,
   ModelRequest,
 } from "../../model-gateway";
-import { IntentRouter } from "../intent/IntentRouter";
-import { RuleIntentClassifier } from "../intent/classifiers";
-import { TaskAnalyzer } from "../task-analyzer/TaskAnalyzer";
-import type { SuperIntentResult } from "../intent/types";
+import { IntentRouter } from "../helpers/intent/IntentRouter";
+import { RuleIntentClassifier } from "../helpers/intent/classifiers";
+import { TaskAnalyzer } from "../helpers/task-analyzer/TaskAnalyzer";
+import type { SuperIntentResult } from "../helpers/intent/types";
 
 class StaticLlmPort implements LlmPort {
   public readonly id = "static-understanding-llm";

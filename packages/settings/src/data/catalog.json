@@ -1311,8 +1311,17 @@
       "docker",
       "podman"
     ],
-    "description": "Preferred sandbox backend. auto picks seatbelt (macOS) or bubblewrap (Linux).",
+    "description": "Preferred sandbox backend. auto picks seatbelt (macOS), bubblewrap (Linux), or docker/podman (Windows). Explicit seatbelt/bubblewrap fail closed when unavailable.",
     "default": "auto"
+  },
+  "mitii.safety.sandbox.lifecycle": {
+    "type": "string",
+    "enum": [
+      "ephemeral",
+      "session"
+    ],
+    "description": "Process sandbox lifecycle. ephemeral wraps each command; session keeps one docker/podman container for the run (call dispose when the run ends).",
+    "default": "ephemeral"
   },
   "mitii.tools.applyPatch.fuzzyMatch": {
     "type": "boolean",

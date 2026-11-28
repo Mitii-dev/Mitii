@@ -197,4 +197,72 @@ describe('prepareStartInput', () => {
       }),
     ).rejects.toMatchObject({ code: 'unknown_mode_profile' });
   });
+
+  it('attaches runtimeSituation with host + catalog from workspace', async () => {
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({
+        name: 'fixture',
+        packageManager: 'pnpm@9.0.0',
+        workspaces: ['packages/*'],
+        scripts: { test: 'vitest' },
+      }),
+      'utf8',
+    );
+    mkdirSync(join(root, 'packages', 'demo'), { recursive: true });
+    writeFileSync(
+      join(root, 'packages', 'demo', 'package.json'),
+      JSON.stringify({ name: '@fixture/demo', scripts: { test: 'vitest' } }),
+      'utf8',
+    );
+    const { start } = await prepareStartInput({
+      prompt: 'inspect packages/demo',
+      workspaceRoot: root,
+      focusedFile: 'packages/demo/src/a.ts',
+      dirtyPaths: ['packages/demo/src/a.ts'],
+      loadDiskProjectRules: false,
+      loadModeProfiles: false,
+      userSafety: 'off',
+      skipRuntimeSituationGather: false,
+      skipDiagnostics: true,
+    });
+    expect(start.runtimeSituation?.host?.focusedFile).toBe(
+      'packages/demo/src/a.ts',
+    );
+    expect(start.runtimeSituation?.host?.cwd).toBe(root);
+    expect(start.runtimeSituation?.host?.dirtyPaths).toContain(
+      'packages/demo/src/a.ts',
+    );
+    expect(start.dirtyPaths).toContain('packages/demo/src/a.ts');
+    expect(start.runtimeSituation?.catalog?.projects?.[0]?.id).toBe('.');
+    expect(
+      start.runtimeSituation?.catalog?.projects?.some(
+        (p) => p.id === 'packages/demo',
+      ),
+    ).toBe(true);
+    expect(start.runtimeSituation?.catalog?.relationships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fromProjectId: '.',
+          toProjectId: 'packages/demo',
+          type: 'workspace_member',
+        }),
+      ]),
+    );
+    expect(start.runtimeSituation?.catalog?.configPointers).toContain(
+      'package.json',
+    );
+  });
+
+  it('can skip runtimeSituation entirely', async () => {
+    const { start } = await prepareStartInput({
+      prompt: 'hi',
+      workspaceRoot: root,
+      attachRuntimeSituation: false,
+      loadDiskProjectRules: false,
+      loadModeProfiles: false,
+      userSafety: 'off',
+    });
+    expect(start.runtimeSituation).toBeUndefined();
+  });
 });

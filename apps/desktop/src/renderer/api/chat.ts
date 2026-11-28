@@ -35,6 +35,7 @@ export async function* streamPrompt(options: {
   approvedPlan?: unknown;
   approvedPlanStrategy?: unknown;
   taskList?: unknown;
+  completedPlanStepIds?: string[];
   signal?: AbortSignal;
 }): AsyncGenerator<DesktopPromptStreamLine> {
   yield* streamNdjson(`${options.baseUrl}/v1/prompt`, {
@@ -70,6 +71,9 @@ export async function* streamPrompt(options: {
         ? { approvedPlanStrategy: options.approvedPlanStrategy }
         : {}),
       ...(options.taskList ? { taskList: options.taskList } : {}),
+      ...(options.completedPlanStepIds?.length
+        ? { completedPlanStepIds: options.completedPlanStepIds }
+        : {}),
     }),
   });
 }

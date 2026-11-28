@@ -22,19 +22,14 @@ import type { RunBudgetTracker } from "../internal/RunBudget";
 import type { InMemorySessionHistoryArchive } from "../internal/session-history";
 import type { InstructionBodiesByKind } from "../internal/system-context";
 import type { TaskListRef } from "../internal/taskListRuntime";
-import { EventBus } from "../internal/EventBus";
+import type { EventBus } from "../internal/EventBus";
 import { discardIncompleteToolCalls } from "../modules/complete-tool-calls";
-import {
-  answerLockModelRequestFields,
-  toolsOffModelRequestFields,
-} from "../modules/diagnose-answer";
-import { mutateLockModelRequestFields } from "../modules/mutate-readiness";
 import type { ToolLoopGuard } from "../modules/tool-loop-guard";
 import { consumeModelTurn } from "./consumeModelTurn";
 import type { OfferContinueFn } from "./createOfferContinue";
-import { prepareTurn } from "./prepareTurn";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
+import { prepareModelLoopModelTurn } from "./runModelLoopModelTurnPrepare";
 
 export type ModelTurnSuccess = {
   kind: "completed";
@@ -106,105 +101,18 @@ export async function runModelLoopModelTurn(params: {
     runId,
     signal,
     llm,
-    request,
-    messages,
     budget,
-    windowPolicy,
-    taskListRef,
-    decision,
-    forceFinalOnly,
-    awaitingAnswerOnly,
-    awaitingMutateOnly,
-    mutateLockAllowTargetedReads,
-    toolLoopGuard,
     answer,
     reasonCodes,
     warnings,
-    logVerbosity,
-    sessionHistoryArchive,
     offerContinue,
   } = params;
-
-  let memoryFacts = params.memoryFacts;
-  let emittedLoopPressureWarning = params.emittedLoopPressureWarning;
-  let emittedLoopCompactionWarning = params.emittedLoopCompactionWarning;
-  let lastPromptCacheClass = params.lastPromptCacheClass;
-  let contextEpoch = params.contextEpoch;
 
   budget.recordModelCall();
   budget.recordLoopIteration();
   runtime.emitStage(bus, runId, "model_running", "started");
 
-  const offerTools =
-    !forceFinalOnly &&
-    !awaitingAnswerOnly &&
-    !awaitingMutateOnly &&
-    !toolLoopGuard.isForcingFinalResponse() &&
-    decision.toolGrant.allowedTools.length > 0;
-  const toolFields = awaitingAnswerOnly
-    ? answerLockModelRequestFields(request.tools)
-    : awaitingMutateOnly
-      ? mutateLockModelRequestFields(request.tools, {
-          allowTargetedReads: mutateLockAllowTargetedReads,
-        })
-      : offerTools
-        ? { tools: request.tools }
-        : toolsOffModelRequestFields();
-  const baseRequest: ModelRequest = {
-    ...request,
-    ...toolFields,
-  };
-
-  const prepared = await prepareTurn({
-    runtime,
-    runId,
-    bus,
-    request: baseRequest,
-    messages,
-    budget,
-    windowPolicy,
-    taskListRef,
-    grantPathScopes: decision.toolGrant.pathScopes,
-    mutationBudget: decision.toolGrant.mutationBudget,
-    repoBuildStateBefore: params.repoBuildStateBefore,
-    memoryFacts,
-    memoryQuery: params.memoryQuery,
-    memoryWorkspaceId: params.memoryWorkspaceId,
-    memoryFileTargets: params.memoryFileTargets,
-    abortSignal: signal,
-    establishedFacts: params.establishedFacts,
-    reasonCodes,
-    warnings,
-    logVerbosity,
-    lastPromptCacheClass,
-    emittedLoopPressureWarning,
-    emittedLoopCompactionWarning,
-    contextEpoch,
-    decisionRoute: decision.route,
-    decisionPlanningDepth: decision.planningDepth,
-    selectedSkillIds: params.selectedSkillIds,
-    projectRuleIds: params.projectRuleIds,
-    environmentIds: params.environmentIds,
-    instructionBodies: params.instructionBodies,
-    memoryIds: memoryFacts?.map((fact) => fact.id) ?? [],
-    sessionHistoryArchive,
-  });
-  if (prepared.memoryFacts) {
-    memoryFacts = [...prepared.memoryFacts];
-  }
-  emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
-  emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
-  lastPromptCacheClass = prepared.promptCacheClass;
-  contextEpoch = prepared.contextEpoch;
-  if (prepared.contextEpoch) {
-    runtime.contextEpochs.set(runId, prepared.contextEpoch);
-    const store = runtime.deps.contextEpochStore;
-    if (store) {
-      void store.save(prepared.contextEpoch).catch(() => {
-        /* best-effort; checkpoint remains authoritative */
-      });
-    }
-  }
+  const prepared = await prepareModelLoopModelTurn(params);
 
   const turn = await consumeModelTurn(runtime, {
     llm,
@@ -290,10 +198,10 @@ export async function runModelLoopModelTurn(params: {
     toolCalls,
     discardedCount,
     truncated,
-    memoryFacts,
-    emittedLoopPressureWarning,
-    emittedLoopCompactionWarning,
-    lastPromptCacheClass,
-    contextEpoch,
+    memoryFacts: prepared.memoryFacts,
+    emittedLoopPressureWarning: prepared.emittedLoopPressureWarning,
+    emittedLoopCompactionWarning: prepared.emittedLoopCompactionWarning,
+    lastPromptCacheClass: prepared.promptCacheClass,
+    contextEpoch: prepared.contextEpoch,
   };
 }

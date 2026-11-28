@@ -35,7 +35,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       reasonCodesExcludes: ["verification_run_requested"],
     },
   },
@@ -51,7 +51,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsIncludes: ["fetch_url"],
       allowedToolsExcludes: ["web_search"],
     },
@@ -71,9 +71,9 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       reasonCodesIncludes: ["prompt_injection_ignored"],
-      maximumWorkspaceEffect: "none",
+      maximumWorkspaceEffect: "read",
     },
   },
   {
@@ -170,7 +170,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsIncludes: ["read_file", "search_files"],
     },
   },
@@ -185,7 +185,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "multi_file", complexity: "moderate" },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsExcludes: ["apply_patch", "delete_file", "run_command"],
     },
   },
@@ -193,7 +193,8 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
     id: "golden-adjustment-narrow-monorepo-package",
     category: "grant",
     mode: "agent",
-    message: "@packages/mui-builder fix all the ts errors",
+    message:
+      "Only edit under packages/mui-builder — fix all the ts errors",
     understanding: createUnderstanding({
       primaryTaskIntent: "bugfix",
       interactionIntent: "act",

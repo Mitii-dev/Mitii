@@ -31,16 +31,18 @@ import { RipgrepWorkspaceTextSearchAdapter } from '../ports/RipgrepWorkspaceText
 import { createHostGitPort } from '../ports/createHostGitPort.js';
 import { createHostRepositoryGraphPort } from '../repository-graph/loadWorkspaceGraphs.js';
 import {
-  createSandboxedProcessPort,
-  detectSandboxBackend,
-  resolveSandboxPolicy,
-} from '../sandbox/createSandboxedProcessPort.js';
+  buildHostSandboxPolicy,
+  createHostSandboxProcessPort,
+  disposeSandboxProcessPort,
+  probeSandboxReadiness,
+} from '../sandbox/index.js';
 import {
   HostClientOptionsError,
   hostClientScalarOptionsSchema,
   type CreateHostClientOptions,
   type HostClientComposition,
   type HostClientReasonCode,
+  type HostClientSandboxHandle,
   type HostMcpPort,
   type HostMcpSnapshot,
   type HostSandboxOptions,
@@ -59,6 +61,8 @@ export function readSandboxOptionsFromEnv(
   env: NodeJS.ProcessEnv,
 ): HostSandboxOptions {
   const backend = env.MITII_SANDBOX_BACKEND;
+  const lifecycleRaw = env.MITII_SANDBOX_LIFECYCLE?.trim();
+  const profileRaw = env.MITII_SANDBOX_PROFILE?.trim();
   return {
     enabled: env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true',
     network: env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny',
@@ -66,6 +70,14 @@ export function readSandboxOptionsFromEnv(
       backend && SANDBOX_BACKENDS.has(backend)
         ? (backend as HostSandboxOptions['prefer'])
         : 'auto',
+    ...(lifecycleRaw === 'session' || lifecycleRaw === 'ephemeral'
+      ? { lifecycle: lifecycleRaw }
+      : {}),
+    ...(profileRaw === 'strict' ||
+    profileRaw === 'balanced' ||
+    profileRaw === 'permissive'
+      ? { isolationProfile: profileRaw }
+      : {}),
   };
 }
 
@@ -154,6 +166,7 @@ export async function createHostClient(
   let verification: VerificationPipeline | undefined;
   let git: ReturnType<typeof createHostGitPort> | undefined;
   let repoGraphs: ReturnType<typeof createHostRepositoryGraphPort> | undefined;
+  let sandboxHandle: HostClientSandboxHandle | undefined;
 
   if (root) {
     const fileSystem = new NodeWorkspaceFileSystemAdapter();
@@ -167,17 +180,57 @@ export async function createHostClient(
       git,
     });
     const sandbox = options.sandbox ?? {};
+    const lifecycle = sandbox.lifecycle ?? 'ephemeral';
+    const prefer = sandbox.prefer ?? 'auto';
     const processPort =
       options.processPort ??
-      createSandboxedProcessPort(
-        new NodeProcessAdapter(),
-        resolveSandboxPolicy({
+      createHostSandboxProcessPort({
+        inner: new NodeProcessAdapter(),
+        policy: buildHostSandboxPolicy({
+          workspaceRoot: root,
           enabled: sandbox.enabled === true,
           network: sandbox.network ?? 'deny',
-          workspaceRoot: root,
+          isolationProfile: sandbox.isolationProfile ?? 'balanced',
+          ...(sandbox.writablePaths
+            ? { writablePaths: sandbox.writablePaths }
+            : {}),
+          ...(sandbox.readablePaths
+            ? { readablePaths: sandbox.readablePaths }
+            : {}),
+          ...(sandbox.denyReadPaths
+            ? { denyReadPaths: sandbox.denyReadPaths }
+            : {}),
+          ...(sandbox.resources ? { resources: sandbox.resources } : {}),
+          ...(sandbox.scopes ? { scopes: sandbox.scopes } : {}),
+          ...(sandbox.applyUserSafetyProtectedPaths !== undefined
+            ? {
+                applyUserSafetyProtectedPaths:
+                  sandbox.applyUserSafetyProtectedPaths,
+              }
+            : {}),
+          ...(sandbox.applyDefaultDenyReadPaths !== undefined
+            ? {
+                applyDefaultDenyReadPaths: sandbox.applyDefaultDenyReadPaths,
+              }
+            : {}),
         }),
-        detectSandboxBackend({ prefer: sandbox.prefer ?? 'auto' }),
-      );
+        prefer,
+        lifecycle,
+        ...(sandbox.sessionKey
+          ? { sessionKey: sandbox.sessionKey }
+          : options.defaultSessionId
+            ? { sessionKey: options.defaultSessionId }
+            : {}),
+      });
+    sandboxHandle = {
+      processPort,
+      readiness: probeSandboxReadiness({
+        enabled: sandbox.enabled === true,
+        prefer,
+        lifecycle,
+      }),
+      dispose: () => disposeSandboxProcessPort(processPort),
+    };
     const search = createOptionalSearchPort({
       env,
       ...(options.search?.apiKey ? { apiKey: options.search.apiKey } : {}),
@@ -267,5 +320,6 @@ export async function createHostClient(
     mcpToolDefinitions,
     ...(memoryStore ? { memoryStore } : {}),
     ...(memoryEmbedding ? { memoryEmbedding } : {}),
+    ...(sandboxHandle ? { sandbox: sandboxHandle } : {}),
   };
 }

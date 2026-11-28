@@ -38,6 +38,8 @@ export const TOOL_REASON_CODES = [
   "invalid_arguments",
   "effect_not_granted",
   "path_out_of_scope",
+  /** Grant deny: path is on the protected fence. */
+  "protected_path",
   /** Hard-denied vendored/generated path (node_modules, .git, dist, …). */
   "path_hard_denied",
   "path_escape",
@@ -46,6 +48,7 @@ export const TOOL_REASON_CODES = [
   "command_injection",
   "network_not_allowed",
   "limit_exceeded",
+  "budget_exceeded",
   "mutation_budget_exceeded",
   "output_truncated",
   "timeout",

@@ -66,5 +66,7 @@ export interface GoldenDecisionCase {
     discoveredPaths?: string[];
     extraPaths?: string[];
     residualRisk?: "low" | "medium" | "high" | "critical";
+    /** Required for widen — registered upgrade plate id (S2C-UPGRADE). */
+    upgradePlateId?: string;
   };
 }
