@@ -94,25 +94,64 @@ export type {
 // OS sandbox
 export {
   createSandboxedProcessPort,
+  createSandboxProcessPort,
+  createHostSandboxProcessPort,
+  createLiveSandboxedProcessPort,
+  createSessionSandboxedProcessPort,
   detectSandboxBackend,
+  detectSessionContainerRuntime,
+  disposeSandboxProcessPort,
+  isSessionSandboxedProcessPort,
+  probeSandboxReadiness,
+  describeSandboxPort,
   resolveDockerBackend,
+  resolveWindowsBackend,
   resolveSandboxPolicy,
+  resolveSandboxPreset,
+  resolveSandboxSettingsFromPreset,
+  projectGrantToOsPolicy,
+  buildSandboxPolicy,
+  buildHostSandboxPolicy,
+  buildSessionContainerName,
+  SessionSandboxPool,
+  waitUntilSessionRunning,
   SandboxUnavailableError,
-} from '../sandbox/createSandboxedProcessPort.js';
+  noopSandboxLogger,
+  SANDBOX_REASON_CODES,
+  SANDBOX_LIFECYCLE_MODES,
+  SANDBOX_ISOLATION_PROFILES,
+  SANDBOX_IMAGE_CANDIDATES,
+  SANDBOX_DEFAULT_DENY_READ_RELATIVE,
+  DEFAULT_SANDBOX_IMAGE,
+  SANDBOX_ENV_KEYS,
+} from '../sandbox/index.js';
 export type {
   SandboxPolicy,
   SandboxNetworkMode,
   SandboxBackend,
   SandboxBackendPrefer,
-} from '../sandbox/createSandboxedProcessPort.js';
-export {
-  resolveSandboxPreset,
-  resolveSandboxSettingsFromPreset,
-} from '../sandbox/resolveSandboxPreset.js';
-export type {
+  SandboxBackendId,
+  SandboxResources,
   SandboxApprovalPreset,
   SandboxPresetDefaults,
-} from '../sandbox/resolveSandboxPreset.js';
+  SandboxReasonCode,
+  SandboxLifecycleMode,
+  SandboxIsolationProfile,
+  SandboxedProcessPort,
+  SessionSandboxedProcessPort,
+  SandboxSessionStatus,
+  SandboxSessionInfo,
+  SandboxGrantScopesInput,
+  BuildSandboxPolicyInput,
+  BuildHostSandboxPolicyInput,
+  SandboxReadiness,
+  SandboxPortDescription,
+  SandboxLoggerPort,
+  LiveSandboxSettings,
+  LiveSandboxSettingsReader,
+  LiveSandboxPolicyOptions,
+  SessionSandboxPoolOptions,
+} from '../sandbox/index.js';
 
 // Workspace hooks
 export {

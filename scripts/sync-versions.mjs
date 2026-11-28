@@ -16,6 +16,7 @@ const packageFiles = [
   'packages/sdk/package.json',
   'packages/automation/package.json',
   'packages/search-kit/package.json',
+  'packages/sandbox/package.json',
   'packages/mcp/package.json',
   'packages/mcp/web/package.json',
   'packages/mcp/sqlite/package.json',

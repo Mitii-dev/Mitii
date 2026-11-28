@@ -13,6 +13,7 @@ import {
   createHostClient,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createLiveSandboxedProcessPort,
   detectSandboxBackend,
   isModelIoLoggingEnabled,
   resolveProviderApiKey,
@@ -22,7 +23,7 @@ import {
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
-import { createLiveSandboxedProcessPort } from './liveSandboxProcess.js';
+import { createVsCodeSandboxSettingsReader } from './readVsCodeSandboxSettings.js';
 import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { defaultMcpSettings, readMcpSettings } from './mcpConfig.js';
@@ -276,7 +277,7 @@ export async function createVscodeClient(
     ...(workspaceRoot
       ? {
           processPort: createLiveSandboxedProcessPort(
-            vs,
+            createVsCodeSandboxSettingsReader(vs),
             new NodeProcessAdapter(),
             workspaceRoot,
             detectSandboxBackend({ prefer: sandboxPrefer }),

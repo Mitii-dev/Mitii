@@ -13,6 +13,7 @@ export type {
   CreateHostClientOptions,
   HostClientComposition,
   HostClientReasonCode,
+  HostClientSandboxHandle,
   HostMcpPort,
   HostMcpSnapshot,
   HostMemoryOptions,

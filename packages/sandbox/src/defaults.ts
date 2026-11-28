@@ -6,9 +6,9 @@
  * pilot → enabled + network allow
  */
 
-import type { SandboxNetworkMode } from "./createSandboxedProcessPort.js";
+import type { SandboxNetworkMode } from './contracts/policy.js';
 
-export type SandboxApprovalPreset = "safe" | "guided" | "builder" | "pilot";
+export type SandboxApprovalPreset = 'safe' | 'guided' | 'builder' | 'pilot';
 
 export interface SandboxPresetDefaults {
   enabled: boolean;
@@ -19,18 +19,18 @@ export function resolveSandboxPreset(
   approvalMode: string | undefined,
 ): SandboxPresetDefaults {
   const mode =
-    approvalMode === "builder"
-      ? "guided"
-      : approvalMode === "safe" ||
-          approvalMode === "guided" ||
-          approvalMode === "pilot"
+    approvalMode === 'builder'
+      ? 'guided'
+      : approvalMode === 'safe' ||
+          approvalMode === 'guided' ||
+          approvalMode === 'pilot'
         ? approvalMode
-        : "guided";
+        : 'guided';
 
-  if (mode === "pilot") {
-    return { enabled: true, network: "allow" };
+  if (mode === 'pilot') {
+    return { enabled: true, network: 'allow' };
   }
-  return { enabled: true, network: "deny" };
+  return { enabled: true, network: 'deny' };
 }
 
 /**
@@ -49,9 +49,9 @@ export function resolveSandboxSettingsFromPreset(params: {
       params.enabled !== undefined ? params.enabled === true : preset.enabled,
     network:
       params.network !== undefined
-        ? params.network === "allow"
-          ? "allow"
-          : "deny"
+        ? params.network === 'allow'
+          ? 'allow'
+          : 'deny'
         : preset.network,
   };
 }

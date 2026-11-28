@@ -1,17 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createLiveSandboxedProcessPort } from '../src/liveSandboxProcess';
-import type { SandboxBackend } from '@mitii/host';
+
+import type { SandboxBackend } from '../contracts/policy.js';
+import { createLiveSandboxedProcessPort } from './createLiveSandboxedProcessPort.js';
 
 function harness() {
-  const settings = new Map<string, unknown>([['safety.approvalMode', 'guided']]);
-  const vs = {
-    workspace: {
-      getConfiguration: () => ({
-        get: (key: string) => settings.get(key),
-        inspect: (key: string) =>
-          settings.has(key) ? { workspaceValue: settings.get(key) } : {},
-      }),
-    },
+  const state = {
+    approvalMode: 'guided' as string,
+    enabled: undefined as boolean | undefined,
+    network: undefined as string | undefined,
   };
   const wrap = vi.fn((request) => request);
   const backend: SandboxBackend = { id: 'seatbelt', available: true, wrap };
@@ -26,12 +22,16 @@ function harness() {
     })),
   };
   const port = createLiveSandboxedProcessPort(
-    vs as never,
+    () => ({
+      approvalMode: state.approvalMode,
+      ...(state.enabled !== undefined ? { enabled: state.enabled } : {}),
+      ...(state.network !== undefined ? { network: state.network } : {}),
+    }),
     inner,
     '/workspace',
     backend,
   );
-  return { settings, wrap, port };
+  return { state, wrap, port };
 }
 
 const request = {
@@ -41,15 +41,15 @@ const request = {
   maxOutputBytes: 1024,
 };
 
-describe('live command access settings', () => {
+describe('createLiveSandboxedProcessPort', () => {
   it('applies full access and later restricted access on the same process port', async () => {
-    const { settings, wrap, port } = harness();
+    const { state, wrap, port } = harness();
     for (const [mode, network] of [
       ['guided', 'deny'],
       ['pilot', 'allow'],
       ['safe', 'deny'],
     ] as const) {
-      settings.set('safety.approvalMode', mode);
+      state.approvalMode = mode;
       await port.execFile(request);
       expect(wrap).toHaveBeenLastCalledWith(
         request,
@@ -59,9 +59,9 @@ describe('live command access settings', () => {
   });
 
   it('preserves an explicit network override when access changes', async () => {
-    const { settings, wrap, port } = harness();
-    settings.set('safety.sandbox.network', 'deny');
-    settings.set('safety.approvalMode', 'pilot');
+    const { state, wrap, port } = harness();
+    state.network = 'deny';
+    state.approvalMode = 'pilot';
     await port.execFile(request);
     expect(wrap).toHaveBeenLastCalledWith(
       request,
@@ -78,15 +78,15 @@ describe('live command access settings', () => {
   });
 
   it('ignores a live sandbox disable after sandbox has already been enabled', async () => {
-    const { settings, wrap, port } = harness();
-    settings.set('safety.approvalMode', 'guided');
+    const { state, wrap, port } = harness();
+    state.approvalMode = 'guided';
     await port.execFile(request);
     expect(wrap).toHaveBeenLastCalledWith(
       request,
       expect.objectContaining({ enabled: true }),
     );
 
-    settings.set('safety.sandbox.enabled', false);
+    state.enabled = false;
     await port.execFile(request);
     expect(wrap).toHaveBeenLastCalledWith(
       request,

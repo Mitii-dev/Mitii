@@ -436,6 +436,10 @@ export function settingsToEngineEnv(
         (settings.safety.approvalMode === 'pilot' ? 'allow' : 'deny'),
     );
     env.MITII_SANDBOX_BACKEND = String(settings.safety.sandbox.backend);
+    const lifecycle = settings.safety.sandbox.lifecycle;
+    if (lifecycle === 'session' || lifecycle === 'ephemeral') {
+      env.MITII_SANDBOX_LIFECYCLE = lifecycle;
+    }
   } else {
     env.MITII_SANDBOX = '0';
   }

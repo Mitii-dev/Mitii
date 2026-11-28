@@ -38,8 +38,8 @@ const V8_LOOP_KEYS: Record<string, unknown> = {
 };
 
 describe('settings catalog contract', () => {
-  it('holds 212 valid mitii.* entries', () => {
-    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(212);
+  it('holds 213 valid mitii.* entries', () => {
+    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(213);
     expect(() => parseSettingsCatalog(SETTINGS_CATALOG)).not.toThrow();
   });
 
@@ -198,7 +198,7 @@ describe('VS Code contributes projection', () => {
     const result = spawnSync(process.execPath, [script], { encoding: 'utf8' });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('212 mitii.* keys in sync');
+    expect(result.stdout).toContain('213 mitii.* keys in sync');
     const manifest = JSON.parse(readFileSync(vscodeManifest, 'utf8'));
     expect(
       diffContributesProperties(manifest.contributes.configuration.properties),

@@ -175,6 +175,7 @@ Environment (common):
   ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
   SEARXNG_BASE_URL / MITII_SEARXNG_URL
   MITII_SANDBOX=1                  OS process sandbox (fail-closed)
+  MITII_SANDBOX_LIFECYCLE=session  Long-lived container (dispose after run)
   Env vars: see README (Environment / CI secrets)
 
 CI example:

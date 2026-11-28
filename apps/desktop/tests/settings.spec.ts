@@ -25,7 +25,7 @@ import { catalogNumberDescriptors } from '../src/renderer/settings/policyCatalog
 
 describe('desktop settings', () => {
   it('includes full VS Code mitii.* catalog', () => {
-    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(212);
+    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(213);
     expect(SETTINGS_CATALOG['mitii.provider.model']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.tokenBudget.enabled']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.loopPolicy.enabled']).toBeTruthy();
