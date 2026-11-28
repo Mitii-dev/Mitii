@@ -81,4 +81,63 @@ describe("summarizeAgentVerifyEvidence", () => {
     expect(evidence?.exitCode).toBe(1);
     expect(evidence?.command).toContain("a.test.js");
   });
+
+  it("prefers selective pass over a later broad package-suite fail", () => {
+    const evidence = extractAgentVerifyEvidence([
+      {
+        toolName: "run_readonly_command",
+        status: "succeeded",
+        outputPreview: JSON.stringify({
+          argv: ["node", "--test", "packages/checks/test/http-check.test.js"],
+          exitCode: 0,
+          hint: "✔ desugars nested http.start",
+        }),
+      },
+      {
+        toolName: "run_readonly_command",
+        status: "succeeded",
+        outputPreview: JSON.stringify({
+          argv: ["pnpm", "--filter", "@mitii-bench/checks", "test"],
+          exitCode: 1,
+          hint: "EPERM mkdtemp",
+        }),
+      },
+    ]);
+    expect(evidence?.outcome).toBe("passed");
+    expect(evidence?.scope).toBe("selective");
+    expect(evidence?.command).toContain("http-check.test.js");
+  });
+
+  it("maps env-shaped selective fails to could_not_run", () => {
+    const evidence = extractAgentVerifyEvidence([
+      {
+        toolName: "run_readonly_command",
+        status: "succeeded",
+        outputPreview: JSON.stringify({
+          argv: ["node", "--test", "packages/checks/test/suite-lifecycle.test.js"],
+          exitCode: 1,
+          hint: "listen EPERM: operation not permitted 127.0.0.1",
+        }),
+      },
+    ]);
+    expect(evidence?.outcome).toBe("could_not_run");
+    expect(evidence?.scope).toBe("selective");
+  });
+
+  it("does not promote pass-line telemetry as a failure hint", () => {
+    const evidence = extractAgentVerifyEvidence([
+      {
+        toolName: "run_readonly_command",
+        status: "succeeded",
+        outputPreview: JSON.stringify({
+          argv: ["node", "--test", "packages/checks/test/suite-lifecycle.test.js"],
+          exitCode: 1,
+          hint: "✔ compiles start stop pretest posttest (0.5ms)",
+        }),
+      },
+    ]);
+    expect(evidence?.outcome).toBe("failed");
+    expect(evidence?.hint).toBeUndefined();
+    expect(evidence?.note).not.toMatch(/✔/);
+  });
 });

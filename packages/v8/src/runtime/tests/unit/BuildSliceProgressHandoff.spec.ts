@@ -222,10 +222,12 @@ describe("buildSliceProgressHandoff", () => {
           "Failed via `node --test packages/checks/test/a.test.js` (exit 1)",
       },
     );
-    expect(leftover).toMatch(/landed this turn, but verification failed/i);
+    expect(leftover).toMatch(/verification still needs attention/i);
     expect(leftover).toMatch(/Address verification failures/);
     expect(leftover).toMatch(/Re-run verification/);
     expect(leftover).toMatch(/Failed via/);
+    expect(leftover).toMatch(/continue verification repair/i);
+    expect(leftover).not.toMatch(/start the next slice/i);
     expect(leftover).not.toMatch(/is done\./);
   });
 });

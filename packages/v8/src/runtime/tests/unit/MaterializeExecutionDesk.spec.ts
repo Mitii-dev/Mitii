@@ -104,6 +104,48 @@ describe("reconcileExecutionDeskOnFinish", () => {
     expect(result.taskList).toEqual(current);
   });
 
+  it("does not invent Exit-code campaign rows from a verify answer", () => {
+    const result = reconcileExecutionDeskOnFinish({
+      plan: {
+        schemaVersion: 1,
+        id: "plan_1",
+        objective: "HTTP redesign",
+        phases: [
+          {
+            id: "change",
+            name: "Change",
+            steps: [
+              {
+                id: "s1",
+                intent: "Phase 0 desugar",
+                targetRefs: [],
+              },
+              {
+                id: "s2",
+                intent: "Session continuity",
+                targetRefs: [],
+              },
+            ],
+          },
+        ],
+      } as never,
+      answer: `Verification is green.
+
+- **Exit code: 0**
+- **14 passed, 0 failed, 2 skipped**
+`,
+    });
+    expect(result.status).toBe("applied");
+    expect(result.taskList?.items.map((item) => item.title).join(" ")).toMatch(
+      /desugar|session/i,
+    );
+    expect(
+      result.taskList?.items.some((item) =>
+        /exit code|passed,/i.test(item.title),
+      ),
+    ).toBe(false);
+  });
+
   it("clears leaked discovery so Continue is not Find relevant entrypoint", () => {
     const discovery = {
       schemaVersion: TASK_LIST_SCHEMA_VERSION,

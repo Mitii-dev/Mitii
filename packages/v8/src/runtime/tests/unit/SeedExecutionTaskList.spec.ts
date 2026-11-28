@@ -71,6 +71,40 @@ Target files:
     expect(isWeakSeededTaskList(seeded.taskList)).toBe(false);
   });
 
+  it("rejects verify-status residue as campaign steppers", () => {
+    const residue = `Verification is green for this change set.
+
+- **Exit code: 0**
+- **14 passed, 0 failed, 2 skipped**
+
+1. Exit code: 0
+2. 14 passed, 0 failed, 2 skipped
+`;
+    expect(extractObjectiveSliceTitles(residue)).toEqual([]);
+    const seeded = seedExecutionTaskListFromObjective(residue);
+    expect(seeded.taskList).toBeUndefined();
+    expect(seeded.reasonCodes).toContain("tasklist_seed_skipped_no_llm_steps");
+  });
+
+  it("marks evidence-only desks as weak", () => {
+    expect(
+      isWeakSeededTaskList({
+        schemaVersion: TASK_LIST_SCHEMA_VERSION,
+        source: "agent",
+        purpose: "execution",
+        title: "Campaign checklist",
+        items: [
+          { id: "slice_1", title: "Exit code: 0", status: "active" },
+          {
+            id: "slice_2",
+            title: "14 passed, 0 failed, 2 skipped",
+            status: "pending",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it("prefers Recommended next-step numbered list from plan prose", () => {
     const planProse = `## Summary of findings
 

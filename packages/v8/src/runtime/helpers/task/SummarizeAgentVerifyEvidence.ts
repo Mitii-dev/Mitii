@@ -1,7 +1,15 @@
 /**
  * Prefer agent-run selective test evidence over hollow finish-phase verify.
  * Process exitCode is authoritative when present (tool "succeeded" ≠ green).
+ * Desk seal uses the best selective outcome so a later broad suite fail
+ * (npm test / env noise) cannot overwrite a green change-scoped pass.
  */
+
+import { classifyVerifyCommandScope } from "./ClassifyVerifyCommandScope";
+import {
+  isNoiseVerifyHint,
+  looksLikeEnvVerifyFailure,
+} from "./LooksLikeEnvVerifyFailure";
 
 export type AgentVerifyEvidence = {
   note: string;
@@ -9,6 +17,8 @@ export type AgentVerifyEvidence = {
   command: string;
   exitCode?: number;
   hint?: string;
+  /** Change-scoped file test vs package-wide suite. */
+  scope: "selective" | "broad";
 };
 
 export function summarizeAgentVerifyEvidence(
@@ -36,65 +46,126 @@ export function extractAgentVerifyEvidence(
     exitCode?: number;
   }[],
 ): AgentVerifyEvidence | undefined {
+  const collected: AgentVerifyEvidence[] = [];
   for (let index = journal.length - 1; index >= 0; index -= 1) {
     const entry = journal[index]!;
-    const toolName = entry.toolName ?? entry.toolId;
-    if (
-      toolName !== "run_readonly_command" &&
-      toolName !== "run_command"
-    ) {
-      continue;
-    }
-    const parsed = parseCommandResult(entry);
-    if (!parsed || !looksLikeVerifyCommand(parsed.argv)) continue;
-    const shortCmd =
-      parsed.command.length > 120
-        ? `${parsed.command.slice(0, 117)}...`
-        : parsed.command;
-    const exitCode =
-      typeof entry.exitCode === "number"
-        ? entry.exitCode
-        : parsed.exitCode;
+    const evidence = evidenceFromJournalEntry(entry);
+    if (evidence) collected.push(evidence);
+  }
+  return selectBestAgentVerifyEvidence(collected);
+}
 
-    if (exitCode === 0) {
-      return {
-        note: `Passed via \`${shortCmd}\``,
-        outcome: "passed",
-        command: parsed.command,
-        exitCode: 0,
-        ...(parsed.hint ? { hint: parsed.hint } : {}),
-      };
-    }
-    if (typeof exitCode === "number") {
-      const note = parsed.hint
-        ? `Failed via \`${shortCmd}\` (exit ${exitCode}: ${parsed.hint})`
-        : `Failed via \`${shortCmd}\` (exit ${exitCode})`;
-      return {
-        note,
-        outcome: "failed",
-        command: parsed.command,
-        exitCode,
-        ...(parsed.hint ? { hint: parsed.hint } : {}),
-      };
-    }
-    if (entry.status === "succeeded") {
-      return {
-        note: `Ran \`${shortCmd}\` (exit code unknown)`,
-        outcome: "ran_unknown",
-        command: parsed.command,
-        ...(parsed.hint ? { hint: parsed.hint } : {}),
-      };
-    }
-    if (entry.status === "failed") {
-      return {
-        note: `Could not run \`${shortCmd}\``,
-        outcome: "could_not_run",
-        command: parsed.command,
-        ...(parsed.hint ? { hint: parsed.hint } : {}),
-      };
-    }
+/**
+ * Newest-first list. Prefer newest selective decisive outcome so a later
+ * broad `npm test` fail cannot steal desk policy from a green file test.
+ */
+export function selectBestAgentVerifyEvidence(
+  newestFirst: readonly AgentVerifyEvidence[],
+): AgentVerifyEvidence | undefined {
+  if (newestFirst.length === 0) return undefined;
+
+  const selectiveDecisive = newestFirst.filter(
+    (item) =>
+      item.scope === "selective" &&
+      (item.outcome === "passed" || item.outcome === "failed"),
+  );
+  if (selectiveDecisive.length > 0) {
+    return normalizeEnvOutcome(selectiveDecisive[0]!);
+  }
+
+  const anyDecisive = newestFirst.find(
+    (item) => item.outcome === "passed" || item.outcome === "failed",
+  );
+  if (anyDecisive) return normalizeEnvOutcome(anyDecisive);
+
+  return newestFirst[0];
+}
+
+function normalizeEnvOutcome(evidence: AgentVerifyEvidence): AgentVerifyEvidence {
+  if (evidence.outcome !== "failed") return evidence;
+  const blob = `${evidence.note} ${evidence.hint ?? ""}`;
+  if (!looksLikeEnvVerifyFailure(blob)) return evidence;
+  // Env/sandbox could not prove a product defect — desk treats as soft.
+  return {
+    ...evidence,
+    outcome: "could_not_run",
+    note: `Could not run \`${shortCommand(evidence.command)}\` (environment restriction)`,
+  };
+}
+
+function evidenceFromJournalEntry(entry: {
+  toolName?: string;
+  toolId?: string;
+  status?: string;
+  output?: unknown;
+  outputPreview?: string;
+  summary?: string;
+  exitCode?: number;
+}): AgentVerifyEvidence | undefined {
+  const toolName = entry.toolName ?? entry.toolId;
+  if (toolName !== "run_readonly_command" && toolName !== "run_command") {
+    return undefined;
+  }
+  const parsed = parseCommandResult(entry);
+  if (!parsed || !looksLikeVerifyCommand(parsed.argv)) return undefined;
+
+  const scope = classifyVerifyCommandScope(parsed.argv);
+  const shortCmd = shortCommand(parsed.command);
+  const exitCode =
+    typeof entry.exitCode === "number" ? entry.exitCode : parsed.exitCode;
+  const hint = sanitizeHint(parsed.hint);
+
+  if (exitCode === 0) {
+    return {
+      note: `Passed via \`${shortCmd}\``,
+      outcome: "passed",
+      command: parsed.command,
+      exitCode: 0,
+      scope,
+      ...(hint ? { hint } : {}),
+    };
+  }
+  if (typeof exitCode === "number") {
+    const note = hint
+      ? `Failed via \`${shortCmd}\` (exit ${exitCode}: ${hint})`
+      : `Failed via \`${shortCmd}\` (exit ${exitCode})`;
+    return {
+      note,
+      outcome: "failed",
+      command: parsed.command,
+      exitCode,
+      scope,
+      ...(hint ? { hint } : {}),
+    };
+  }
+  if (entry.status === "succeeded") {
+    return {
+      note: `Ran \`${shortCmd}\` (exit code unknown)`,
+      outcome: "ran_unknown",
+      command: parsed.command,
+      scope,
+      ...(hint ? { hint } : {}),
+    };
+  }
+  if (entry.status === "failed") {
+    return {
+      note: `Could not run \`${shortCmd}\``,
+      outcome: "could_not_run",
+      command: parsed.command,
+      scope,
+      ...(hint ? { hint } : {}),
+    };
   }
   return undefined;
+}
+
+function sanitizeHint(hint: string | undefined): string | undefined {
+  if (!hint || isNoiseVerifyHint(hint)) return undefined;
+  return hint;
+}
+
+function shortCommand(command: string): string {
+  return command.length > 120 ? `${command.slice(0, 117)}...` : command;
 }
 
 function parseCommandResult(entry: {
@@ -115,7 +186,6 @@ function parseCommandResult(entry: {
       const fromPreview = asCommandPayload(parsed);
       if (fromPreview) return fromPreview;
     } catch {
-      // Truncated JSON previews are common — recover exitCode/argv/hint.
       const recovered = recoverFromTruncatedPreview(preview);
       if (recovered) return recovered;
     }
@@ -154,11 +224,11 @@ function asCommandPayload(value: unknown):
   if (argv.length === 0 && typeof record.exitCode !== "number") {
     return undefined;
   }
-  const hint =
+  const rawHint =
     (typeof record.hint === "string" && record.hint.trim()
       ? record.hint.trim().slice(0, 80)
       : undefined) ??
-    firstNonEmptyLine(
+    firstUsefulLine(
       typeof record.stderr === "string" ? record.stderr : undefined,
       typeof record.stdout === "string" ? record.stdout : undefined,
     );
@@ -168,11 +238,10 @@ function asCommandPayload(value: unknown):
     ...(typeof record.exitCode === "number"
       ? { exitCode: record.exitCode }
       : {}),
-    ...(hint ? { hint } : {}),
+    ...(rawHint ? { hint: rawHint } : {}),
   };
 }
 
-/** Recover fields when preview JSON was sliced mid-object. */
 function recoverFromTruncatedPreview(preview: string):
   | { argv: string[]; command: string; exitCode?: number; hint?: string }
   | undefined {
@@ -204,17 +273,16 @@ function recoverArgv(preview: string): string[] {
   return parts;
 }
 
-function firstNonEmptyLine(
+function firstUsefulLine(
   ...blobs: Array<string | undefined>
 ): string | undefined {
   for (const blob of blobs) {
     if (!blob) continue;
-    const line = blob
-      .split("\n")
-      .find((row) => row.trim().length > 0)
-      ?.trim()
-      .slice(0, 80);
-    if (line) return line;
+    for (const row of blob.split("\n")) {
+      const line = row.trim().slice(0, 80);
+      if (!line || isNoiseVerifyHint(line)) continue;
+      return line;
+    }
   }
   return undefined;
 }

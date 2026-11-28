@@ -32,6 +32,10 @@ export {
 } from "./DeriveTaskListAfterPlan";
 export type { DeriveTaskListAfterPlanResult } from "./DeriveTaskListAfterPlan";
 export {
+  isEvidenceOrStatusTitle,
+  isEvidenceOnlyTaskTitles,
+} from "./IsEvidenceOrStatusTitle";
+export {
   materializeExecutionDesk,
   reconcileExecutionDeskOnFinish,
 } from "./MaterializeExecutionDesk";

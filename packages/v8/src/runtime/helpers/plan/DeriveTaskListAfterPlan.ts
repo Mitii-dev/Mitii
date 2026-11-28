@@ -14,6 +14,10 @@ import {
   TaskListPipeline,
   type TaskList,
 } from "../../../modules/task-list";
+import {
+  isEvidenceOnlyTaskTitles,
+  isEvidenceOrStatusTitle,
+} from "./IsEvidenceOrStatusTitle";
 
 export interface DeriveTaskListAfterPlanResult {
   taskList?: TaskList;
@@ -25,18 +29,23 @@ const pipeline = new TaskListPipeline();
 
 /**
  * Invented desks that must not surface as a checklist.
- * Prefer LLM plan steps or no strip — never a truncated ask dump.
+ * Prefer LLM plan steps or no strip — never a truncated ask dump
+ * or verify-status residue ("Exit code: 0", pass tallies).
  */
 export function isWeakSeededTaskList(taskList: TaskList | undefined): boolean {
   if (!taskList?.items?.length) return false;
   if (taskList.source === "plan") return false;
+  const titles = taskList.items
+    .map((item) => item.title?.trim() ?? "")
+    .filter((title) => title.length > 0);
+  if (isEvidenceOnlyTaskTitles(titles)) return true;
   if (taskList.items.length === 1) {
-    const title = taskList.items[0]?.title?.trim() ?? "";
+    const title = titles[0] ?? "";
     // Truncated ask dump or canned filler — not an LLM stepper.
     return /…$|\.\.\.$/.test(title) || /^complete requested work$/i.test(title);
   }
   if (taskList.items.length !== 2) return false;
-  const second = taskList.items[1]?.title?.trim().toLowerCase() ?? "";
+  const second = titles[1]?.toLowerCase() ?? "";
   return second === "verify and finish remaining work";
 }
 
@@ -210,6 +219,7 @@ function collectBulletTitles(section: string): string[] {
     const hit = numbered || boldBullet;
     if (!hit || hit.length < 4) continue;
     if (isSectionLabelTitle(hit)) continue;
+    if (isEvidenceOrStatusTitle(hit)) continue;
     if (looksLikePathOnlyTitle(hit)) continue;
     titles.push(clipTitle(hit.replace(/\s+/g, " ")));
   }
@@ -221,6 +231,7 @@ function collectBulletTitles(section: string): string[] {
       ?.trim();
     if (!headerWork || headerWork.length < 4) continue;
     if (isSectionLabelTitle(headerWork)) continue;
+    if (isEvidenceOrStatusTitle(headerWork)) continue;
     titles.push(clipTitle(headerWork.replace(/\s+/g, " ")));
   }
   return [...new Set(titles)];
@@ -260,6 +271,7 @@ function looksLikePathOnlyTitle(text: string): boolean {
 
 function isProcessMetaTitle(text: string): boolean {
   const trimmed = text.trim();
+  if (isEvidenceOrStatusTitle(trimmed)) return true;
   // Canned discovery rows + generic recon verbs — never campaign slices.
   return (
     /^(?:discover|explore|investigate|research|find|read|identify)\b/i.test(

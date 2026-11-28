@@ -49,6 +49,7 @@ describe("sealVerifyRepairDesk", () => {
           outcome: "passed",
           command: "node --test a.js",
           exitCode: 0,
+          scope: "selective",
         },
         runnerStatus: "failed",
       }),
@@ -60,6 +61,7 @@ describe("sealVerifyRepairDesk", () => {
           outcome: "failed",
           command: "node --test a.js",
           exitCode: 1,
+          scope: "selective",
         },
       }),
     ).toBe(true);
@@ -75,6 +77,7 @@ describe("sealVerifyRepairDesk", () => {
           note: "Could not run `node --test a.js`",
           outcome: "could_not_run",
           command: "node --test a.js",
+          scope: "selective",
         },
         runnerStatus: "failed",
       }),
@@ -85,8 +88,21 @@ describe("sealVerifyRepairDesk", () => {
           note: "Ran `node --test a.js` (exit code unknown)",
           outcome: "ran_unknown",
           command: "node --test a.js",
+          scope: "selective",
         },
         runnerStatus: "failed",
+      }),
+    ).toBe(false);
+    expect(
+      shouldSealVerifyRepairDesk({
+        agentEvidence: {
+          note: "Failed via `node --test a.js` (exit 1: listen EPERM 127.0.0.1)",
+          outcome: "failed",
+          command: "node --test a.js",
+          exitCode: 1,
+          hint: "listen EPERM 127.0.0.1",
+          scope: "selective",
+        },
       }),
     ).toBe(false);
     expect(

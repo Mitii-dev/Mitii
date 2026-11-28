@@ -163,9 +163,15 @@ export function formatOpenChecklistLeftoverAnswer(
     .filter((path) => path.length > 0)
     .slice(0, 6);
 
+  const repairing = isVerifyRepairDesk(taskList);
+  const continueCta = repairing
+    ? "Want me to continue verification repair? Say **continue**."
+    : "Want me to start the next slice? Say **continue**.";
   const lines = [
     verifyFailed
-      ? `Implementation of **${doneWork}** landed this turn, but verification failed.`
+      ? repairing
+        ? `Edits for **${doneWork}** landed this turn, but verification still needs attention.`
+        : `Implementation of **${doneWork}** landed this turn, but verification failed.`
       : `Implementation of **${doneWork}** is done.`,
     verifyFailed
       ? `Next we still have **${nextWork}**.`
@@ -174,7 +180,7 @@ export function formatOpenChecklistLeftoverAnswer(
     `Verified: ${verify}`,
     ...(changed.length > 0 ? [`Changed: ${changed.join(", ")}`] : []),
     "",
-    "Want me to start the next slice? Say **continue**.",
+    continueCta,
   ];
   return lines.join("\n");
 }

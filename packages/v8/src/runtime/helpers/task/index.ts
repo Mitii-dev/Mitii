@@ -19,12 +19,23 @@ export {
 export type { SliceProgressHandoff } from "./BuildSliceProgressHandoff";
 export {
   extractAgentVerifyEvidence,
+  selectBestAgentVerifyEvidence,
   summarizeAgentVerifyEvidence,
 } from "./SummarizeAgentVerifyEvidence";
 export type { AgentVerifyEvidence } from "./SummarizeAgentVerifyEvidence";
 export {
+  classifyVerifyCommandScope,
+} from "./ClassifyVerifyCommandScope";
+export type { VerifyCommandScope } from "./ClassifyVerifyCommandScope";
+export {
+  isNoiseVerifyHint,
+  looksLikeEnvVerifyFailure,
+} from "./LooksLikeEnvVerifyFailure";
+export {
   clearOrRestoreAfterVerifyPass,
+  isInfraVerifyNoise,
   isRunnerVerifyFailed,
+  isVerifyDeskSoftPass,
   isVerifyRepairDesk,
   sealVerifyRepairDesk,
   shouldSealVerifyRepairDesk,

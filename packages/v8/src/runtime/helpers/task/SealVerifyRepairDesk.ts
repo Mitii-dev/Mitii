@@ -13,6 +13,7 @@ import {
   type TaskList,
 } from "../../../modules/task-list";
 import { isInternalHostPath } from "../orient/IsInternalHostPath";
+import { looksLikeEnvVerifyFailure } from "./LooksLikeEnvVerifyFailure";
 import type { AgentVerifyEvidence } from "./SummarizeAgentVerifyEvidence";
 
 export const VERIFY_REPAIR_DESK_TITLE = "Verification repair";
@@ -69,6 +70,10 @@ export function isVerifyDeskSoftPass(input: {
 }): boolean {
   const outcome = input.agentEvidence?.outcome;
   if (outcome === "passed" || outcome === "could_not_run") return true;
+  if (outcome === "failed") {
+    const blob = `${input.agentEvidence?.note ?? ""} ${input.agentEvidence?.hint ?? ""}`;
+    if (looksLikeEnvVerifyFailure(blob)) return true;
+  }
   if (input.runnerStatus === "passed") return true;
   if (isInfraVerifyNoise(input)) return true;
   return false;
@@ -87,7 +92,12 @@ export function shouldSealVerifyRepairDesk(input: {
   if (input.agentEvidence?.outcome === "could_not_run") return false;
   // Unknown exit is inconclusive — do not seal a Fix→Re-verify treadmill.
   if (input.agentEvidence?.outcome === "ran_unknown") return false;
-  if (input.agentEvidence?.outcome === "failed") return true;
+  if (input.agentEvidence?.outcome === "failed") {
+    const blob = `${input.agentEvidence.note} ${input.agentEvidence.hint ?? ""}`;
+    // Env-shaped selective fail (EPERM listen/mkdtemp) is not product repair.
+    if (looksLikeEnvVerifyFailure(blob)) return false;
+    return true;
+  }
   // Infra/unavailable (even when remapped to failed) is not product repair.
   if (isInfraVerifyNoise(input)) return false;
   return isRunnerVerifyFailed(input.runnerStatus);

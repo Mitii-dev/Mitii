@@ -125,6 +125,9 @@ export function materializeExecutionDesk(
  * Finish-path reconcile: materialize when empty/weak/discovery; clear junk desks.
  * Discovery is recon-only — never leave it as the host Continue target.
  * Does not replace a healthy sealed campaign checklist.
+ *
+ * Seed text prefers plan.objective over the freeform answer so verify markdown
+ * ("Exit code: 0", pass tallies) cannot invent a fake campaign desk.
  */
 export function reconcileExecutionDeskOnFinish(input: {
   plan?: PlanArtifact;
@@ -143,9 +146,16 @@ export function reconcileExecutionDeskOnFinish(input: {
       reasonCodes: ["tasklist_finish_keep_desk"],
     };
   }
+  const objective = input.plan?.objective?.trim() ?? "";
+  const seedText =
+    objective.length > 0
+      ? objective
+      : // No plan objective — only seed from answer when it still looks like
+        // steppers; evidence titles are rejected inside the seed helper.
+        input.answer;
   const materialized = materializeExecutionDesk({
     plan: input.plan,
-    seedText: input.answer,
+    seedText,
     current: input.current,
   });
   if (

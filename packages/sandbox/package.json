@@ -1,6 +1,6 @@
 {
   "name": "@mitii/sandbox",
-  "version": "2.11.58",
+  "version": "2.11.59",
   "description": "Mitii OS process sandbox: seatbelt / bubblewrap / docker|podman, session lifecycle, grant→OS projection. Host-neutral; contracts-first.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
