@@ -10,6 +10,10 @@ import {
 import {
   looksLikeWorkspaceBugReport,
 } from "./LooksLikeWorkspaceBugReport";
+import {
+  hasClarificationTail,
+  normalizeRouteMessage,
+} from "./NormalizeRouteMessage";
 
 
 /**
@@ -17,7 +21,7 @@ import {
  * Matches host-injected markers — not free-form "code review" chat phrasing.
  */
 export function looksLikeCodeReviewRequest(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }
@@ -36,7 +40,7 @@ export function looksLikeCodeReviewRequest(message: string): boolean {
 
 /** True when the ask names a concrete workspace path (file or app/src tree). */
 export function hasExplicitMutationPathTarget(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }
@@ -65,7 +69,7 @@ export function hasExplicitMutationPathTarget(message: string): boolean {
 
 /** Pronoun-only / tiny mutation asks that still need a target. */
 export function isBareAmbiguousMutationAsk(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   // short alone is not bare when the outcome/target is concrete.
   if (
     isConcreteLocalizedMutationAsk(text) ||
@@ -83,20 +87,20 @@ export function isBareAmbiguousMutationAsk(message: string): boolean {
 
 
 export function hasResolvedClarification(message: string): boolean {
-  return /\nClarification:\s*\S+/i.test(message);
+  return hasClarificationTail(message);
 }
 
 
 export function isHardPlanOnlyRequest(message: string): boolean {
   return /\bplan\s+only\b/i.test(
-    message.replace(/\nClarification:\s*[\s\S]*$/i, ""),
+    normalizeRouteMessage(message),
   );
 }
 
 
 export function isSoftExplicitPlanRequest(message: string): boolean {
   return /\b(make\s+a\s+plan|create\s+a\s+plan|write\s+a\s+plan|propose\s+a\s+plan)\b/i.test(
-    message.replace(/\nClarification:\s*[\s\S]*$/i, ""),
+    normalizeRouteMessage(message),
   );
 }
 
@@ -136,7 +140,7 @@ export function looksLikeAgentVerificationRequest(message: string): boolean {
     return false;
   }
 
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }
@@ -182,13 +186,16 @@ export function looksLikeAgentVerificationRequest(message: string): boolean {
  * Also matches host Continue / next-slice CTA prompts (may be longer).
  */
 export function looksLikeAgentExecuteContinue(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }
   // Desktop / chat leftover Continue — always execute the open desk item.
   if (
     /^continue with the next (?:plan item|slice|step|item)\b/i.test(text) ||
+    /^continue with plan item\b/i.test(text) ||
+    /^continue with verification repair\b/i.test(text) ||
+    /^continue with the next step\b/i.test(text) ||
     /^start next(?:\s+slice|\s+step|\s+item)?\.?[!]?$/i.test(text) ||
     /^start the next (?:slice|step|item)\b/i.test(text) ||
     /^yes[,.]?\s+(?:please\s+)?(?:start|continue)(?:\s+the\s+next)?/i.test(
@@ -219,7 +226,7 @@ export function looksLikeAgentMutationRequest(message: string): boolean {
     return false;
   }
 
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }
@@ -298,7 +305,7 @@ export function looksLikeWorkspaceRuntimeSymptom(message: string): boolean {
     return false;
   }
 
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length < DECISION_POLICY_THRESHOLDS.runtimeSymptomMinChars) {
     return false;
   }
@@ -334,7 +341,7 @@ export function looksLikePastedRuntimeErrorDump(message: string): boolean {
     return false;
   }
 
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length < DECISION_POLICY_THRESHOLDS.pastedRuntimeDumpMinChars) {
     return false;
   }
@@ -365,7 +372,7 @@ export function looksLikePastedRuntimeErrorDump(message: string): boolean {
  * Soft Officer act+bugfix may execute these even when confidence is 0.60–0.69.
  */
 export function looksLikePastedTestFailureReport(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length < DECISION_POLICY_THRESHOLDS.pastedTestFailureMinChars) {
     return false;
   }

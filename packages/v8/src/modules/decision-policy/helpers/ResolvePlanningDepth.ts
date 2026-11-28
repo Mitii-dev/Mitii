@@ -14,6 +14,7 @@ import {
 } from "./ClassifySharedScopeRepair";
 import { resolveFastPath } from "./ResolveFastPath";
 import { EXECUTION_ROUTE } from "../constants";
+import { normalizeRouteMessage } from "./NormalizeRouteMessage";
 
 export interface PlanningDepthResolution {
   planningDepth: PlanningDepth;
@@ -351,7 +352,7 @@ function resolveLongPromptPlanningDepth(params: {
   message: string;
   windowPolicy?: WindowPolicy;
 }): PlanningDepthResolution | null {
-  const text = params.message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(params.message);
   const length = text.length;
   if (length === 0) {
     return null;
@@ -387,7 +388,7 @@ function resolveLongPromptPlanningDepth(params: {
  * criteria, not a single localized edit. Used to force visible planning.
  */
 export function isMultiOutcomeCampaignAsk(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length < 900) {
     return false;
   }

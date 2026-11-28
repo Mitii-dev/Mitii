@@ -28,7 +28,10 @@ import type { useFeedScroll } from './useFeedScroll.js';
 import type { useEngineLifecycle } from '../../shell/hooks/useEngineLifecycle.js';
 import type { useRunStream } from './useRunStream.js';
 import type { useChatPersistence } from './useChatPersistence.js';
-import { stripContinueCtaFromAnswer } from '../../../shared/fileChanges.js';
+import {
+  extractContinueOffer,
+  stripContinueCtaFromAnswer,
+} from '../../../shared/fileChanges.js';
 import { type ChatMessage, type HistoryThread } from '../chatTypes.js';
 
 export function useRunSubmit(deps: Pick<
@@ -377,8 +380,10 @@ export function useRunSubmit(deps: Pick<
         });
       }
 
+      const offerNextActionPrompt =
+        resultNextActionPrompt ?? extractContinueOffer(assistant);
       const hasOpenSliceWorkPreview =
-        Boolean(resultNextActionPrompt) ||
+        Boolean(offerNextActionPrompt) ||
         (typeof resultPendingCount === 'number' && resultPendingCount > 0) ||
         Boolean(
           resultTaskList?.items.some(
@@ -409,7 +414,7 @@ export function useRunSubmit(deps: Pick<
 
       const usedPlanHandoff = Boolean(approvedPlan) && runMode === 'agent';
       const hasOpenSliceWork =
-        Boolean(resultNextActionPrompt) ||
+        Boolean(offerNextActionPrompt) ||
         (typeof resultPendingCount === 'number' && resultPendingCount > 0) ||
         Boolean(
           resultTaskList?.items.some(
@@ -438,8 +443,8 @@ export function useRunSubmit(deps: Pick<
       if (resultCompletedIds?.length) {
         setCompletedPlanStepIds(new Set(resultCompletedIds));
       }
-      if (resultNextActionPrompt) {
-        setPendingNextActionPrompt(resultNextActionPrompt);
+      if (offerNextActionPrompt) {
+        setPendingNextActionPrompt(offerNextActionPrompt);
       } else if (!hasOpenSliceWork) {
         setPendingNextActionPrompt(null);
       }
@@ -455,8 +460,8 @@ export function useRunSubmit(deps: Pick<
           ...(resultCompletedIds?.length
             ? { completedPlanStepIds: resultCompletedIds }
             : {}),
-          ...(resultNextActionPrompt
-            ? { pendingNextActionPrompt: resultNextActionPrompt }
+          ...(offerNextActionPrompt
+            ? { pendingNextActionPrompt: offerNextActionPrompt }
             : hasOpenSliceWork
               ? {}
               : { pendingNextActionPrompt: null }),
@@ -469,8 +474,8 @@ export function useRunSubmit(deps: Pick<
           ...(resultCompletedIds?.length
             ? { completedPlanStepIds: resultCompletedIds }
             : {}),
-          ...(resultNextActionPrompt
-            ? { pendingNextActionPrompt: resultNextActionPrompt }
+          ...(offerNextActionPrompt
+            ? { pendingNextActionPrompt: offerNextActionPrompt }
             : {}),
         };
       } else if (usedPlanHandoff || override?.clearPendingPlanAfter) {
@@ -480,19 +485,36 @@ export function useRunSubmit(deps: Pick<
         setCompletedPlanStepIds(new Set());
         setPendingNextActionPrompt(null);
         planPersist = { clearPendingPlan: true };
-      } else if (resultTaskList || resultNextActionPrompt) {
-        if (resultTaskList) setPendingTaskList(resultTaskList);
-        planPersist = {
-          ...(resultTaskList ? { pendingTaskList: resultTaskList } : {}),
-          ...(resultCompletedIds?.length
-            ? { completedPlanStepIds: resultCompletedIds }
-            : {}),
-          ...(resultNextActionPrompt
-            ? { pendingNextActionPrompt: resultNextActionPrompt }
-            : hasOpenSliceWork
-              ? {}
-              : { pendingNextActionPrompt: null }),
-        };
+      } else if (resultTaskList || offerNextActionPrompt) {
+        const deskFinished =
+          typeof resultPendingCount === 'number' &&
+          resultPendingCount === 0 &&
+          Boolean(resultTaskList?.items.length);
+        if (deskFinished) {
+          // Finished checklist — drop sticky "Plan complete" desk.
+          setPendingTaskList(null);
+          setPendingNextActionPrompt(null);
+          planPersist = {
+            pendingTaskList: null,
+            pendingNextActionPrompt: null,
+            ...(resultCompletedIds?.length
+              ? { completedPlanStepIds: resultCompletedIds }
+              : {}),
+          };
+        } else {
+          if (resultTaskList) setPendingTaskList(resultTaskList);
+          planPersist = {
+            ...(resultTaskList ? { pendingTaskList: resultTaskList } : {}),
+            ...(resultCompletedIds?.length
+              ? { completedPlanStepIds: resultCompletedIds }
+              : {}),
+            ...(offerNextActionPrompt
+              ? { pendingNextActionPrompt: offerNextActionPrompt }
+              : hasOpenSliceWork
+                ? {}
+                : { pendingNextActionPrompt: null }),
+          };
+        }
       }
 
       await persistMessages(

@@ -102,6 +102,40 @@ describe("selectDecisionPlate", () => {
     }
   });
 
+  it("executes continue even when a host pin envelope prefixes the message", () => {
+    const plate = selectDecisionPlate({
+      mode: "agent",
+      primaryTaskIntent: "question",
+      clarityConfidence: "high",
+      planningHint: "none",
+      askUser: false,
+      turnKind: "follow_up",
+      message:
+        "User pinned these paths for this turn:\n- cases\n\ncontinue",
+    });
+    expect(plate.route).toBe("execute");
+    expect(plate.reasonCodes).toContain("plate_continue_prompt_execute");
+  });
+
+  it("agent continue always executes regardless of prior diagnose/answer posture", () => {
+    for (const priorRoute of ["diagnose", "repository_answer", "answer", "plan"]) {
+      const plate = selectDecisionPlate({
+        mode: "agent",
+        primaryTaskIntent: "question",
+        clarityConfidence: "high",
+        planningHint: "none",
+        askUser: false,
+        turnKind: "follow_up",
+        message: "continue",
+        interactionIntent: "question",
+        priorRoute,
+        endingPosture: "proposal_ready",
+      });
+      expect(plate.route).toBe("execute");
+      expect(plate.reasonCodes).toContain("plate_continue_prompt_execute");
+    }
+  });
+
   it("executes proposal_ready + act stance via continuity bias", () => {
     const plate = selectDecisionPlate({
       mode: "agent",

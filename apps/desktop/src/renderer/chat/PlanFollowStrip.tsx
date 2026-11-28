@@ -122,6 +122,8 @@ export function PlanFollowStrip({
   const [expanded, setExpanded] = useState(() => stepCount > 0 && stepCount <= 6);
   const current = currentPlanStep(plan, running);
   if (!plan) return null;
+  // Completed desk should not stick as a second "plan" over the composer.
+  if (!running && current?.complete) return null;
 
   const steps = plan.steps ?? [];
   const totalSteps = steps.length;

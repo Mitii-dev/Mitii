@@ -66,13 +66,24 @@ export function usePlanActions(deps: Pick<
 
   const continueNextSlice = useCallback(() => {
     if (busy) return;
-    const nextTitle = pendingTaskList?.items.find(
+    // Discovery is recon-only — never Continue on "Find relevant entrypoint".
+    const discoveryDesk =
+      pendingTaskList?.purpose === 'discovery' ||
+      pendingTaskList?.source === 'discovery';
+    const executionDesk = discoveryDesk ? null : pendingTaskList;
+    const nextTitle = executionDesk?.items.find(
       (item) => item.status === 'pending' || item.status === 'active',
     )?.title;
+    const repairing =
+      executionDesk?.title === 'Verification repair' ||
+      (executionDesk?.items.some((item) => item.id === 'repair_fix') &&
+        executionDesk?.items.some((item) => item.id === 'repair_reverify'));
     const prompt =
       pendingNextActionPrompt?.trim() ||
       (nextTitle
-        ? `Continue with the next plan item: ${nextTitle}`
+        ? repairing
+          ? `Continue with verification repair: ${nextTitle}`
+          : `Continue with the next plan item: ${nextTitle}`
         : 'Continue with the next plan item.');
     setMode('agent');
     void onSubmit({
@@ -82,7 +93,7 @@ export function usePlanActions(deps: Pick<
       ...(pendingPlanStrategy
         ? { approvedPlanStrategy: pendingPlanStrategy }
         : {}),
-      ...(pendingTaskList ? { taskList: pendingTaskList } : {}),
+      ...(executionDesk ? { taskList: executionDesk } : {}),
     });
   }, [
     busy,

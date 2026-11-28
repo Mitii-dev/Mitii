@@ -7,12 +7,11 @@ import type { DiscoveryBrief, PlanningResult } from "../../../modules/planning";
 import {
   assemblePlanQualityGates,
   beginDiscoveryTaskList,
-  deriveTaskListAfterPlan,
   emitPlanPhaseTelemetry,
   enforcePlanQuality,
+  materializeExecutionDesk,
   rejectHollowPlan,
   resolvePlanExit,
-  seedExecutionTaskListFromObjective,
   shouldRunPlanPipeline,
   type PlanPhaseTelemetry,
 } from "../../helpers/plan";
@@ -183,34 +182,42 @@ export async function planPipeline(
     source?: string;
     items?: unknown[];
   }>("taskList");
-  const hasSealedExecutionDesk =
-    Boolean(currentDesk?.items?.length) &&
-    currentDesk?.purpose !== "discovery" &&
-    currentDesk?.source !== "discovery";
-  let taskListSeeded = false;
-  let derived: ReturnType<typeof deriveTaskListAfterPlan> = {
-    status: "skipped",
-    reasonCodes: hasSealedExecutionDesk
-      ? ["tasklist_keep_sealed_execution"]
-      : ["tasklist_derive_deferred"],
-  };
   // Cursor-like: one sealed campaign checklist. Never grow / replace an open
-  // execution desk on re-plan; only derive or seed when empty / discovery.
-  if (!hasSealedExecutionDesk) {
-    derived = deriveTaskListAfterPlan({
+  // execution desk on re-plan; materializeExecutionDesk owns the ladder.
+  let derived: ReturnType<typeof materializeExecutionDesk> = {
+    status: "skipped",
+    softSeeded: false,
+    clearedWeak: false,
+    reasonCodes: ["tasklist_derive_deferred"],
+  };
+  if (ctx.mode === "agent" || decision.route === "plan") {
+    derived = materializeExecutionDesk({
       plan: artifact,
+      seedText:
+        artifact?.objective?.trim() || pack?.request?.text?.trim() || undefined,
       maxTasks: ctx.store.getSlice<{ taskList?: { maxTasks?: number } }>(
         "windowPolicy",
       )?.taskList?.maxTasks,
+      current: currentDesk as never,
     });
-    if (derived.taskList) {
+    if (derived.taskList && derived.taskList.items.length > 0) {
       ctx.store.setSlice("taskList", derived.taskList);
-    } else if (ctx.mode === "agent" || decision.route === "plan") {
-      const seeded = seedExecutionTaskListFromObjective(
-        pack?.request?.text?.trim() || "Complete requested work",
-      );
-      ctx.store.setSlice("taskList", seeded.taskList);
-      taskListSeeded = true;
+    } else if (derived.clearedWeak) {
+      ctx.store.setSlice("taskList", undefined);
+    } else if (
+      currentDesk?.purpose === "discovery" ||
+      currentDesk?.source === "discovery"
+    ) {
+      // Never leave canned discovery rows as the host Continue target after plan.
+      ctx.store.setSlice("taskList", undefined);
+      derived = {
+        ...derived,
+        clearedWeak: true,
+        reasonCodes: [
+          ...derived.reasonCodes,
+          "tasklist_cleared_discovery_after_plan",
+        ],
+      };
     }
   }
 
@@ -274,7 +281,7 @@ export async function planPipeline(
     quality,
     planningStatus: result.status,
     planTitle: artifact?.objective,
-    taskListDerived: derived.status === "applied" || taskListSeeded,
+    taskListDerived: derived.status === "applied",
     planExit,
     telemetry,
     reasonCodes: [
@@ -296,7 +303,6 @@ export async function planPipeline(
           ]),
       ...quality.reasonCodes,
       ...derived.reasonCodes,
-      ...(taskListSeeded ? ["tasklist_seeded_from_objective"] : []),
       ...planExit.reasonCodes,
       ...telemetry.reasonCodes,
     ],

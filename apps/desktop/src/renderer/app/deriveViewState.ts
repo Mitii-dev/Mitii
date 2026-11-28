@@ -5,6 +5,7 @@ import type { useShellUiState } from '../shell/hooks/useShellUiState.js';
 import type { useComposerState } from '../chat/hooks/useComposerState.js';
 import type { useEngineSnapshot } from '../shell/hooks/useEngineSnapshot.js';
 import { planArtifactToFollowView } from '../chat/planFollowView.js';
+import { planFollowNeedsContinue } from '../chat/PlanFollowStrip.js';
 
 export function deriveViewState(deps: Pick<
     ReturnType<typeof useChatThreadState>,
@@ -61,12 +62,18 @@ export function deriveViewState(deps: Pick<
 
   const settingsOpen = view === 'settings';
 
-  const planFollowView = planArtifactToFollowView(
+  const rawPlanFollowView = planArtifactToFollowView(
     pendingPlan,
     busy && (mode === 'plan' || mode === 'agent'),
     pendingTaskList,
     completedPlanStepIds,
   );
+  // Show while running or when open work remains — hide sticky "Plan complete".
+  const planFollowView = !rawPlanFollowView
+    ? null
+    : busy || planFollowNeedsContinue(rawPlanFollowView, false)
+      ? rawPlanFollowView
+      : null;
 
   // Cursor-like: file changes track the latest assistant turn only.
   // Scanning older cards left the strip stuck on the first patch round.
@@ -101,25 +108,44 @@ export function deriveViewState(deps: Pick<
   const activeReviewFindings =
     codeReviewEnabled && !reviewDismissed ? reviewFindings : [];
 
-  // Chat layout: files live on the message card. Code layout: files live on
-  // the composer strip. Never both.
+  // File changes always live on the composer strip (never in the chat feed).
   const showComposerReview =
-    (chatLayout === 'code' && latestFileChangeCount > 0) ||
-    activeReviewFindings.length > 0;
+    latestFileChangeCount > 0 || activeReviewFindings.length > 0;
 
   const showOnboarding = settings.onboarding?.completed === false;
 
+  const discoveryDesk =
+    pendingTaskList?.purpose === 'discovery' ||
+    pendingTaskList?.source === 'discovery';
   const hasOpenExecutionItem = Boolean(
-    pendingTaskList?.items.some(
-      (item) => item.status === 'pending' || item.status === 'active',
-    ),
+    !discoveryDesk &&
+      pendingTaskList?.items.some(
+        (item) => item.status === 'pending' || item.status === 'active',
+      ),
   );
+  const executionStarted = Boolean(
+    (!discoveryDesk &&
+      pendingTaskList?.items.some(
+        (item) => item.status === 'active' || item.status === 'done',
+      )) ||
+      (completedPlanStepIds && completedPlanStepIds.size > 0),
+  );
+  const followNeedsContinue = planFollowNeedsContinue(planFollowView, busy);
+  // Build when a plan is waiting to start; Continue strip owns mid-campaign.
+  const showPendingPlanBuild =
+    Boolean(pendingPlan) &&
+    (mode === 'plan' || mode === 'agent') &&
+    !executionStarted;
+  // PlanFollowStrip Continue when checklist is live; else prose nextAction bar.
   const showContinueSliceBar =
     !busy &&
-    (Boolean(pendingNextActionPrompt?.trim()) || hasOpenExecutionItem);
+    !followNeedsContinue &&
+    Boolean(pendingNextActionPrompt?.trim() || hasOpenExecutionItem);
 
   return {
     planFollowView,
+    showPendingPlanBuild,
+    followNeedsContinue,
     showComposerReview,
     activeReviewFindings,
     latestFileChanges,

@@ -9,6 +9,7 @@ import {
 import { DatabaseModeBanner, isDatabaseMcpServer } from './DatabaseModeBanner.js';
 import { ComposerReviewStrip } from './ComposerReviewStrip.js';
 import { ContinueSliceBar } from './ContinueSliceBar.js';
+import { PlanFollowStrip } from './PlanFollowStrip.js';
 import { fetchCheckpoints, restoreCheckpoint, shortPath } from '../api.js';
 import { type CSSProperties } from 'react';
 import type { AppModel } from '../app/useAppModel.js';
@@ -22,6 +23,10 @@ export function ChatComposer({ m }: { m: AppModel }) {
     busy,
     executePendingPlan,
     dismissPendingPlan,
+    continueNextSlice,
+    planFollowView,
+    showPendingPlanBuild,
+    followNeedsContinue,
     mcpStatusReady,
     mcpMasterEnabled,
     mcpServers,
@@ -84,8 +89,7 @@ export function ChatComposer({ m }: { m: AppModel }) {
     <div className="composer-dock">
       <PendingPlanBanner
         visible={
-          Boolean(pendingPlan) &&
-          mode === 'plan' &&
+          showPendingPlanBuild &&
           suspension?.kind !== 'plan_approval_required'
         }
         busy={busy}
@@ -94,6 +98,21 @@ export function ChatComposer({ m }: { m: AppModel }) {
         onExecuteInAgent={executePendingPlan}
         onDismiss={dismissPendingPlan}
       />
+      {planFollowView ? (
+        <PlanFollowStrip
+          plan={planFollowView}
+          running={busy}
+          onOpenPlanFile={(path) => {
+            setLayout('code');
+            setWorkspaceSide('explorer');
+            setOpenPathRequest({ path, view: 'file' });
+          }}
+          onContinueNext={
+            followNeedsContinue ? continueNextSlice : undefined
+          }
+          onDismiss={pendingPlan ? dismissPendingPlan : undefined}
+        />
+      ) : null}
       <DatabaseModeBanner
         visible={mode === 'database'}
         status={
@@ -223,7 +242,7 @@ export function ChatComposer({ m }: { m: AppModel }) {
           }}
         />
       ) : null}
-      {m.showContinueSliceBar && m.chatLayout === 'code' ? (
+      {m.showContinueSliceBar ? (
         <ContinueSliceBar
           title={
             m.pendingTaskList?.items.find(

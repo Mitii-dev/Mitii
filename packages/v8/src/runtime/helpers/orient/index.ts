@@ -17,3 +17,7 @@ export type {
   AttachPreDecideMaterialsInput,
   AttachPreDecideMaterialsResult,
 } from "./AttachPreDecideMaterials";
+export {
+  isEphemeralWorkspacePath,
+  isInternalHostPath,
+} from "./IsInternalHostPath";

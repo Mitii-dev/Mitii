@@ -32,6 +32,8 @@ export const contextBundleSchema = z
     /** Human one-liner for early packTurn callers. */
     summary: z.string().min(1),
     focusPaths: z.array(z.string()).default([]),
+    /** Explicit composer pins only — never dirty/.mitii noise. */
+    pinnedPaths: z.array(z.string()).default([]),
     route: z.string().min(1),
     grantProfile: z.string().min(1),
     projectRules: textSliceSchema.optional(),

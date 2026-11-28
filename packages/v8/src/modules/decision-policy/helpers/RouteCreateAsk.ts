@@ -3,6 +3,7 @@ import {
   isExplicitReadOnlyRequest,
   looksLikeAgentMutationRequest,
 } from "./RouteMessageSignals";
+import { normalizeRouteMessage } from "./NormalizeRouteMessage";
 
 /**
  * Explicit imperative "create X" asks in Agent mode.
@@ -25,12 +26,8 @@ const LEADING_CREATE_ASK = new RegExp(
 const PLAN_ONLY_LANGUAGE =
   /\b(?:plan|planning|roadmap|proposal|outline|strategy|brainstorm|options|alternatives|trade-?offs?)\b/i;
 
-function stripClarification(message: string): string {
-  return message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
-}
-
 export function isExplicitCreateAsk(message: string): boolean {
-  const text = stripClarification(message);
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }

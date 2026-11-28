@@ -69,32 +69,36 @@ export function selectDecisionPlate(
     };
   }
 
-  // Open checklist / host Continue CTA → execute next desk item (Cursor-like).
-  // Pure status/Q&A ballots still fall through unless the message itself is a
-  // continue/next-slice prompt.
+  // Agent + continue CTA → always execute. Prior route (diagnose / answer /
+  // plan) only supplies context; it must not re-seal to research.
   const continuePrompt =
     typeof input.message === "string" &&
     looksLikeAgentExecuteContinue(input.message);
+  if (input.mode === "agent" && continuePrompt) {
+    return withNag(executeFastPathPlate, [
+      ...nag.reasonCodes,
+      "plate_continue_prompt_execute",
+    ]);
+  }
+
+  // Open checklist without a continue phrase: still execute next desk item
+  // unless the user is clearly asking a read-only status question.
   const openChecklistPureQuestion =
-    !continuePrompt &&
     input.interactionIntent === "question" &&
     (input.primaryTaskIntent === "question" ||
       input.primaryTaskIntent === "review" ||
       input.primaryTaskIntent === "docs");
   if (
     input.mode === "agent" &&
-    (continuePrompt || input.openExecutionChecklist === true) &&
+    input.openExecutionChecklist === true &&
     !openChecklistPureQuestion &&
     (input.turnKind === "follow_up" ||
       input.turnKind === "continue" ||
-      input.turnKind === "steer" ||
-      continuePrompt)
+      input.turnKind === "steer")
   ) {
     return withNag(executeFastPathPlate, [
       ...nag.reasonCodes,
-      continuePrompt
-        ? "plate_continue_prompt_execute"
-        : "plate_open_checklist_continue",
+      "plate_open_checklist_continue",
     ]);
   }
 

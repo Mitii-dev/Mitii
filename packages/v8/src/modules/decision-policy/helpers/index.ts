@@ -11,7 +11,13 @@ export { isMutationIntent, isDiagnosisIntent } from "./RouteIntents";
 export {
   looksLikeAgentVerificationRequest,
   looksLikeCodeReviewRequest,
+  looksLikeAgentExecuteContinue,
+  looksLikeAgentMutationRequest,
 } from "./RouteMessageSignals";
+export {
+  hasClarificationTail,
+  normalizeRouteMessage,
+} from "./NormalizeRouteMessage";
 
 export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
 export { looksLikePastedTestFailureDump } from "./LooksLikeWorkspaceBugReport";

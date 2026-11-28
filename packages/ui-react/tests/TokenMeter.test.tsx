@@ -40,7 +40,7 @@ describe('TokenMeter', () => {
     expect(dialog.textContent).toContain('Session');
     expect(dialog.textContent).toContain('Total tokens');
     expect(dialog.textContent).toContain(
-      'Context attribution will appear once the run builds a prompt.',
+      'Context usage appears after the prompt is packed.',
     );
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -57,45 +57,31 @@ describe('TokenMeter', () => {
     expect(screen.getByText('Duration')).toBeTruthy();
   });
 
-  it('renders the window budget tree from the context breakdown', () => {
+  it('renders the context usage bar and legend from the breakdown', () => {
     render(
       <TokenMeter
         usage={{
           ...baseUsage,
           contextBreakdown: {
-            slices: [],
+            slices: [
+              {
+                id: 'repository',
+                label: 'Repository',
+                tokens: 9_000,
+                active: true,
+              },
+              {
+                id: 'conversation',
+                label: 'Conversation',
+                tokens: 5_000,
+                active: true,
+              },
+            ],
             totalTokens: 20_000,
             contextWindow: 128_000,
             fillRatio: 0.156,
             source: 'prompt_budget',
-            tree: [
-              {
-                id: 'output',
-                label: 'Output reserve',
-                kind: 'output',
-                usedTokens: 0,
-                allocatedTokens: 16_000,
-                active: true,
-              },
-              {
-                id: 'repository',
-                label: 'Repository',
-                kind: 'section',
-                usedTokens: 9_000,
-                allocatedTokens: 40_000,
-                omittedTokens: 100,
-                active: true,
-                children: [
-                  {
-                    id: 'repoMap',
-                    label: 'Repo map',
-                    kind: 'source',
-                    usedTokens: 4_000,
-                    active: true,
-                  },
-                ],
-              },
-            ],
+            tree: [],
             estimated: false,
           },
         }}
@@ -103,26 +89,21 @@ describe('TokenMeter', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Chat token usage' }));
     expect(screen.getByRole('meter', { name: 'Context window fill' })).toBeTruthy();
-    expect(screen.getByText('Output reserve')).toBeTruthy();
-    expect(screen.getByText('Repo map')).toBeTruthy();
-    expect(screen.getByText('100 omitted')).toBeTruthy();
+    expect(screen.getByText('Repository')).toBeTruthy();
+    expect(screen.getByText('Conversation')).toBeTruthy();
     expect(screen.getByText('Budget')).toBeTruthy();
   });
 
-  it('shows cost and cache chips when rates and cache counters exist', () => {
+  it('keeps cost inside the panel and does not show a cache chip', () => {
     render(
       <TokenMeter
         usage={{ ...baseUsage, cacheHitTokens: 6_000, cacheMissTokens: 6_000 }}
         costRates={{ input: 3, output: 15 }}
       />,
     );
-    expect(screen.getByRole('button', { name: /Estimated cost/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Cache hit 50%' })).toBeTruthy();
-  });
-
-  it('shows the muted cache chip when cost is known but cache is not reported', () => {
-    render(<TokenMeter usage={baseUsage} costRates={{ input: 3, output: 15 }} />);
-    expect(screen.getByRole('button', { name: 'Cache not reported' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Cache/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Chat token usage' }));
+    expect(screen.getByLabelText('Estimated cost')).toBeTruthy();
   });
 
   it('adds placement classes and a glyph only when provided', () => {

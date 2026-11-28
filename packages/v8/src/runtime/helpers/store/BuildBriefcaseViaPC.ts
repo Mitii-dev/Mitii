@@ -54,6 +54,7 @@ export function buildBriefcaseViaPC(
     const tools = (request.tools ?? [])
       .map((t) => t.name)
       .filter((name) => grantTools.has(name));
+    const budget = result.budget;
 
     return {
       systemPrefix:
@@ -64,6 +65,23 @@ export function buildBriefcaseViaPC(
           ? nonSystem.map((m) => ({ role: m.role, content: m.content }))
           : [{ role: "user", content: input.message }],
       tools,
+      promptStatus: result.status,
+      promptBudget: {
+        contextWindowTokens: budget.contextWindowTokens,
+        outputReservedTokens: budget.outputReservedTokens,
+        inputBudgetTokens: budget.inputBudgetTokens,
+        totalUsedTokens: budget.totalUsedTokens,
+        totalOmittedTokens: budget.totalOmittedTokens,
+        totalTruncatedTokens: budget.totalTruncatedTokens,
+        withinLimits: budget.withinLimits,
+        sections: budget.sections.slice(0, 16).map((section) => ({
+          section: section.section,
+          allocatedTokens: section.allocatedTokens,
+          usedTokens: section.usedTokens,
+          omittedTokens: section.omittedTokens,
+          truncatedTokens: section.truncatedTokens,
+        })),
+      },
       reasonCodes: [
         "briefcase_built",
         "briefcase_via_prompt_construction",

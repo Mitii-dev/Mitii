@@ -26,8 +26,19 @@ export {
   beginDiscoveryTaskList,
   replaceDiscoveryWithExecution,
   seedExecutionTaskListFromObjective,
+  seedExecutionTaskListFromPlanArtifact,
+  isWeakSeededTaskList,
+  extractObjectiveSliceTitles,
 } from "./DeriveTaskListAfterPlan";
 export type { DeriveTaskListAfterPlanResult } from "./DeriveTaskListAfterPlan";
+export {
+  materializeExecutionDesk,
+  reconcileExecutionDeskOnFinish,
+} from "./MaterializeExecutionDesk";
+export type {
+  MaterializeExecutionDeskInput,
+  MaterializeExecutionDeskResult,
+} from "./MaterializeExecutionDesk";
 export { emitPlanPhaseTelemetry } from "./EmitPlanPhaseTelemetry";
 export type { PlanPhaseTelemetry } from "./EmitPlanPhaseTelemetry";
 export { enforcePlanQuality } from "./EnforcePlanQuality";

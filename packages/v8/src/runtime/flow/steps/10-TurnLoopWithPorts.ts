@@ -30,6 +30,7 @@ import {
   pushRuntimeToolCompletedEvent,
   pushRuntimeToolStartedEvent,
 } from "../../helpers/events/PushRuntimeModelEvents";
+import { pushRuntimeProgressEvents } from "../../helpers/events/PushRuntimeProgressEvents";
 import type { RuntimeDependencies } from "../../ports/RuntimeDependencies";
 import type {
   RuntimeModelMessage,
@@ -120,6 +121,26 @@ export async function turnLoopWithPorts(
   const toolSummaries: NonNullable<TurnLoopSketch["toolSummaries"]> = [];
   let gate: TurnLoopGateSketch | undefined;
   const sink = deps.eventSink;
+
+  // Real Context Usage: emit prompt_ready with PromptConstruction budget once
+  // the briefcase is packed (early stub has no sections).
+  if (packed.promptBudget) {
+    ctx.store.setSlice("promptBudget", packed.promptBudget);
+    if (packed.promptStatus) {
+      ctx.store.setSlice("promptStatus", packed.promptStatus);
+    }
+    const runId =
+      (ctx.store.getSlice<string>("runId") as string | undefined) ??
+      ctx.input.runId ??
+      "runtime";
+    pushRuntimeProgressEvents(sink, {
+      runId,
+      at: new Date().toISOString(),
+      phase: "prompt_ready",
+      promptBudget: packed.promptBudget,
+      ...(packed.promptStatus ? { promptStatus: packed.promptStatus } : {}),
+    });
+  }
 
   const maxTurns = resolveMaxPortTurns(
     decision,

@@ -34,6 +34,37 @@ describe("adaptHostStartToRuntime", () => {
     expect(adapted.git?.branch).toBe("main");
   });
 
+  it("drops host-internal paths from composer pins", () => {
+    const adapted = adaptHostStartToRuntime({
+      message: "explain",
+      mode: "ask",
+      pinnedPaths: ["cases", ".mitii", ".mitii/logs"],
+    });
+    expect(adapted.pinnedPaths).toEqual(["cases"]);
+    expect(adapted.message).toBe("explain");
+  });
+
+  it("keeps composer pins structured without mutating the user message", () => {
+    const adapted = adaptHostStartToRuntime({
+      request: {
+        userMessage: "continue",
+        mode: "agent",
+        referencedArtifacts: [
+          { path: "packages/checks", name: "packages/checks" },
+        ],
+      },
+      pinnedPaths: ["apps/desktop/src/renderer"],
+    });
+    expect(adapted.pinnedPaths).toEqual(
+      expect.arrayContaining([
+        "apps/desktop/src/renderer",
+        "packages/checks",
+      ]),
+    );
+    // Decide continue-signals must see the bare user text.
+    expect(adapted.message).toBe("continue");
+  });
+
   it("keeps host taskList for next-slice continuity", () => {
     const adapted = adaptHostStartToRuntime({
       request: { userMessage: "start next", mode: "agent" },

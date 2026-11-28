@@ -3,6 +3,7 @@ import type { RequestUnderstandingResult } from "../../request-understanding";
 import { DECISION_POLICY_THRESHOLDS } from "../rules";
 import { DECISION_POLICY_PATTERNS } from "../rules/patterns";
 import { EXECUTION_ROUTE } from "../constants";
+import { normalizeRouteMessage } from "./NormalizeRouteMessage";
 
 /**
  * Stable decline codes for the small-explicit-path fast path. Applied fast
@@ -60,7 +61,7 @@ const PROSE_PATH_STOPLIST = new Set([
  * URLs and prose-shaped dotted tokens are ignored.
  */
 export function extractExplicitFilePaths(message: string): string[] {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "");
+  const text = normalizeRouteMessage(message);
   const withoutUrls = text.replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, " ");
   const found: string[] = [];
   const seen = new Set<string>();
@@ -183,7 +184,7 @@ export function resolveFastPath(params: {
     return decline("change_impact_recommended", paths);
   }
 
-  const primaryText = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const primaryText = normalizeRouteMessage(message);
   if (primaryText.length > DECISION_POLICY_THRESHOLDS.fastPathMaxPromptChars) {
     return decline("prompt_too_long", paths);
   }

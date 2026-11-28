@@ -14,15 +14,13 @@ import {
 } from '@mitii/ui-core';
 
 import { ContextBudgetPanel } from './ContextBudgetPanel.js';
-import { CostAnalytics } from './CostAnalytics.js';
-import { CostCacheChips } from './CostCacheChips.js';
-import { cacheHitRatio, formatCompact, formatPct } from './format.js';
+import { formatCompact, formatPct } from './format.js';
 import type { TokenMeterUsage } from './types.js';
 import { UsageStats, type LiveStatsLayout } from './UsageStats.js';
 
 export interface TokenMeterProps {
   usage: TokenMeterUsage;
-  /** models.dev rates for the active profile; null hides the cost chip. */
+  /** models.dev rates for the active profile; null hides the cost line. */
   costRates?: ModelCostRates | null;
   /** Adds a `token-popover--{placement}` class so hosts can anchor the panel. */
   placement?: 'above' | 'below';
@@ -56,7 +54,7 @@ function usePopoverDismiss(
   }, [open, setOpen, rootRef]);
 }
 
-/** Chat token chip with a detail popover (cost, cache, context window budget). */
+/** Chat token chip with an enterprise context-usage popover. */
 export function TokenMeter({
   usage,
   costRates = null,
@@ -72,8 +70,6 @@ export function TokenMeter({
   const inputTotal = usage.inputTokensTotal;
   const outputTotal = usage.outputTokensTotal;
   const sessionTotal = usage.sessionTotal || inputTotal + outputTotal;
-  const cacheHitTokens = usage.cacheHitTokens ?? 0;
-  const cacheMissTokens = usage.cacheMissTokens ?? 0;
   const turns = usage.turns ?? [];
   const latestCall = turns[turns.length - 1];
   const breakdown = usage.contextBreakdown;
@@ -85,40 +81,32 @@ export function TokenMeter({
       estimateSessionCost(costRates, {
         inputTokens: inputTotal,
         outputTokens: outputTotal,
-        cacheHitTokens,
-        cacheMissTokens,
+        cacheHitTokens: usage.cacheHitTokens ?? 0,
+        cacheMissTokens: usage.cacheMissTokens ?? 0,
       }),
-    [costRates, inputTotal, outputTotal, cacheHitTokens, cacheMissTokens],
+    [
+      costRates,
+      inputTotal,
+      outputTotal,
+      usage.cacheHitTokens,
+      usage.cacheMissTokens,
+    ],
   );
   const showCost =
     Boolean(estimate) &&
     (sessionTotal > 0 || inputTotal > 0 || outputTotal > 0 || Boolean(usage.live));
-  const displayEstimate = showCost ? estimate : null;
-  const cacheRatio = cacheHitRatio(usage);
-  const showCacheSection =
-    cacheHitTokens > 0 ||
-    cacheMissTokens > 0 ||
-    Boolean(displayEstimate?.usedCachePricing);
 
   const latestInput = latestCall?.inputTokens ?? usage.lastPromptTokens;
   const latestOutput = latestCall?.outputTokens ?? usage.lastResponseTokens;
   const tooltip = [
-    usage.live ? 'Live · updating cumulative chat totals' : null,
-    `This chat: ${sessionTotal.toLocaleString()} tokens (input + output)`,
-    `Input: ${inputTotal.toLocaleString()} · Output: ${outputTotal.toLocaleString()}`,
-    cacheHitTokens > 0
-      ? `Cache hit: ${cacheHitTokens.toLocaleString()} tokens`
-      : null,
-    estimate ? `Est. cost: ${formatUsd(estimate.totalUsd)}` : null,
-    `Latest call: ${latestInput.toLocaleString()} in · ${latestOutput.toLocaleString()} out`,
-    usage.contextWindow > 0
-      ? `Model window: ${usage.contextWindow.toLocaleString()} tokens`
-      : null,
+    usage.live ? 'Live · updating' : null,
+    `Chat total: ${sessionTotal.toLocaleString()}`,
+    `Input ${inputTotal.toLocaleString()} · Output ${outputTotal.toLocaleString()}`,
+    estimate ? `Est. cost ${formatUsd(estimate.totalUsd)}` : null,
+    `Latest ${latestInput.toLocaleString()} in · ${latestOutput.toLocaleString()} out`,
     breakdown
-      ? `Context fill: ${formatCompact(breakdown.totalTokens)} / ${formatCompact(breakdown.contextWindow)} (${formatPct(fillRatio)})`
+      ? `Context ${formatCompact(breakdown.totalTokens)} / ${formatCompact(breakdown.contextWindow)} (${formatPct(fillRatio)})`
       : null,
-    `Model calls: ${usage.modelCalls} · Tools: ${usage.toolCalls}`,
-    `Turns: ${usage.turnCount}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -152,8 +140,10 @@ export function TokenMeter({
           {usage.live ? (
             <span className="token-chip__live" aria-label="Updating live" />
           ) : null}
-          <span>{formatCompact(sessionTotal)}</span>
-          <span className="token-chip__sep">·</span>
+          <span className="token-chip__total">{formatCompact(sessionTotal)}</span>
+          <span className="token-chip__sep" aria-hidden>
+            ·
+          </span>
           <span
             className="token-chip__io"
             aria-label={`Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`}
@@ -165,12 +155,14 @@ export function TokenMeter({
           </span>
           {breakdown && windowTokens > 0 ? (
             <>
-              <span className="token-chip__sep">·</span>
+              <span className="token-chip__sep" aria-hidden>
+                ·
+              </span>
               <span
                 className="token-chip__ctx"
                 aria-label={`Context ${formatPct(fillRatio)} of window`}
               >
-                {formatPct(fillRatio)}
+                {Math.round(fillRatio * 100)}%
               </span>
             </>
           ) : null}
@@ -182,9 +174,7 @@ export function TokenMeter({
             aria-label="Token usage details"
           >
             <div className="token-popover__header">
-              <span>
-                {usage.live ? 'Live chat token monitor' : 'Chat token summary'}
-              </span>
+              <span>Chat token summary</span>
               <strong>{headerTag}</strong>
             </div>
 
@@ -194,15 +184,11 @@ export function TokenMeter({
               live={usage.live}
             />
 
-            {displayEstimate || showCacheSection ? (
-              <CostAnalytics
-                estimate={displayEstimate}
-                showCacheSection={showCacheSection}
-                cacheRatio={cacheRatio}
-                cacheHitTokens={cacheHitTokens}
-                cacheMissTokens={cacheMissTokens}
-                inputTokensTotal={inputTotal}
-              />
+            {showCost && estimate ? (
+              <div className="token-cost-line" aria-label="Estimated cost">
+                <span>Est. cost</span>
+                <strong>{formatUsd(estimate.totalUsd)}</strong>
+              </div>
             ) : null}
 
             <UsageStats
@@ -216,15 +202,6 @@ export function TokenMeter({
           </div>
         ) : null}
       </div>
-      <CostCacheChips
-        estimate={displayEstimate}
-        cacheRatio={cacheRatio}
-        cacheHitTokens={cacheHitTokens}
-        showCacheUnavailable={Boolean(displayEstimate) && cacheRatio === null}
-        open={open}
-        live={usage.live}
-        onToggle={toggle}
-      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * Dedicated Continue CTA — always rendered after file changes / answer body.
+ * Subtle Continue control — forces Agent next-slice (not typed chat).
  */
 
 export interface ContinueSliceBarProps {
@@ -13,24 +13,20 @@ export function ContinueSliceBar({
   busy = false,
   onContinue,
 }: ContinueSliceBarProps) {
-  const label = title?.trim()
-    ? `Continue: ${title.trim()}`
-    : 'Continue next slice';
+  const hint = title?.trim() || 'Continue next slice';
 
   return (
-    <section className="continue-slice-bar" aria-label="Continue next slice">
-      <div className="continue-slice-bar__copy">
-        <strong>Next slice ready</strong>
-        <span>{label}</span>
-      </div>
+    <div className="continue-slice">
       <button
         type="button"
-        className="continue-slice-bar__btn"
+        className="continue-slice__btn"
         disabled={busy}
+        title={hint}
+        aria-label={hint}
         onClick={onContinue}
       >
         Continue
       </button>
-    </section>
+    </div>
   );
 }

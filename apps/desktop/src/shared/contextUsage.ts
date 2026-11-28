@@ -37,11 +37,12 @@ const SECTION_LABELS: Record<string, string> = {
   conversation: 'Conversation',
   plan: 'Plan',
   skills: 'Skills',
-  system: 'System / rules',
+  system: 'System prompt',
   rules: 'Rules',
   memory: 'Memory',
-  tools: 'Tools',
+  tools: 'Tool definitions',
   output: 'Output reserve',
+  output_reserve: 'Output reserve',
 };
 
 interface PromptSection {
@@ -63,13 +64,6 @@ function sectionUsed(
   id: string,
 ): PromptSection | undefined {
   return sections.find((s) => s.section === id);
-}
-
-function sumUsed(sections: PromptSection[], ids: string[]): number {
-  return ids.reduce(
-    (sum, id) => sum + (sectionUsed(sections, id)?.usedTokens ?? 0),
-    0,
-  );
 }
 
 function sumAllocated(sections: PromptSection[], ids: string[]): number {
@@ -214,11 +208,26 @@ export function breakdownFromPromptReady(
     allocatedTokens: skillsAllocated,
     omittedTokens: skills?.omittedTokens,
   });
+  const rulesSec = sectionUsed(sections, 'rules');
+  const memorySec = sectionUsed(sections, 'memory');
+  const systemOnly = sectionUsed(sections, 'system');
   const systemNode = sectionNode({
     id: 'system',
-    label: 'System / rules',
-    usedTokens: sumUsed(sections, systemIds),
-    allocatedTokens: systemAllocated,
+    label: 'System prompt',
+    usedTokens: systemOnly?.usedTokens ?? 0,
+    allocatedTokens: systemOnly?.allocatedTokens ?? 0,
+  });
+  const rulesNode = sectionNode({
+    id: 'rules',
+    label: 'Rules',
+    usedTokens: rulesSec?.usedTokens ?? 0,
+    allocatedTokens: rulesSec?.allocatedTokens ?? 0,
+  });
+  const memoryNode = sectionNode({
+    id: 'memory',
+    label: 'Memory',
+    usedTokens: memorySec?.usedTokens ?? 0,
+    allocatedTokens: memorySec?.allocatedTokens ?? 0,
   });
 
   const sectionUsedTotal =
@@ -226,7 +235,9 @@ export function breakdownFromPromptReady(
     conversationNode.usedTokens +
     planNode.usedTokens +
     skillsNode.usedTokens +
-    systemNode.usedTokens;
+    systemNode.usedTokens +
+    rulesNode.usedTokens +
+    memoryNode.usedTokens;
   const freeAllocated = Math.max(
     0,
     usableInputTokens -
@@ -238,11 +249,13 @@ export function breakdownFromPromptReady(
   );
 
   const usableChildren: ContextUsageNode[] = [
+    systemNode,
+    rulesNode,
+    skillsNode,
+    memoryNode,
     repository,
     conversationNode,
     planNode,
-    skillsNode,
-    systemNode,
   ];
   if (freeAllocated > 0 || usableInputTokens > sectionUsedTotal) {
     usableChildren.push({
@@ -260,7 +273,7 @@ export function breakdownFromPromptReady(
 
   const toolsNode: ContextUsageNode = {
     id: 'tools',
-    label: 'Tools / schemas',
+    label: 'Tool definitions',
     usedTokens: tools?.usedTokens ?? 0,
     allocatedTokens: toolSchemaTokens,
     omittedTokens: tools?.omittedTokens,

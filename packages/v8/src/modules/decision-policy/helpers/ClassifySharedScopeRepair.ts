@@ -3,6 +3,7 @@ import type { RequestUnderstandingResult } from "../../request-understanding";
 import { DECISION_POLICY_THRESHOLDS } from "../rules";
 import { DECISION_POLICY_PATTERNS } from "../rules/patterns";
 import { EXECUTION_ROUTE } from "../constants";
+import { normalizeRouteMessage } from "./NormalizeRouteMessage";
 
 const BROAD_REPAIR_INTENTS = new Set([
   "bugfix",
@@ -44,7 +45,7 @@ const MULTI_FAIL_PASTE =
  * Used by the clarify gate so soft Officer ambiguity cannot stall these asks.
  */
 export function isConcreteLocalizedMutationAsk(message: string): boolean {
-  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  const text = normalizeRouteMessage(message);
   if (text.length === 0) {
     return false;
   }

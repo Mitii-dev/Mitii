@@ -593,63 +593,61 @@
   color: var(--mitii-accent);
 }
 
-.continue-slice-bar {
+.continue-slice {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
   max-width: 780px;
   width: 100%;
   margin: 0 auto 8px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 28%, var(--mitii-border));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--mitii-accent) 8%, var(--mitii-panel));
   box-sizing: border-box;
   flex-shrink: 0;
 }
 
-.turn .continue-slice-bar {
-  margin: 10px 0 4px;
+.turn .continue-slice {
+  margin: 8px 0 2px;
   max-width: none;
 }
 
-.continue-slice-bar__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.continue-slice-bar__copy strong {
-  font-size: 12.5px;
-}
-
-.continue-slice-bar__copy span {
+.continue-slice__btn {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
+  background: color-mix(in srgb, var(--mitii-panel) 72%, transparent);
+  color: color-mix(in srgb, var(--mitii-text) 72%, var(--mitii-muted));
+  border-radius: 999px;
+  padding: 5px 14px;
   font-size: 11.5px;
-  color: var(--mitii-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.continue-slice-bar__btn {
-  flex-shrink: 0;
-  border: 0;
-  border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 12.5px;
-  font-weight: 650;
-  color: #fff;
-  background: var(--mitii-accent);
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
   cursor: pointer;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
 }
 
-.continue-slice-bar__btn:hover:not(:disabled) {
-  filter: brightness(1.06);
+.continue-slice__btn:hover:not(:disabled) {
+  color: var(--mitii-text);
+  border-color: color-mix(in srgb, var(--mitii-text) 22%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-text) 5%, var(--mitii-panel));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 10%, transparent) inset,
+    0 4px 12px color-mix(in srgb, #000 8%, transparent);
 }
 
-.continue-slice-bar__btn:disabled {
-  opacity: 0.55;
+.continue-slice__btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+  box-shadow: none;
+}
+
+.continue-slice__btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
+}
+
+.continue-slice__btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--mitii-accent) 45%, transparent);
+  outline-offset: 2px;
 }

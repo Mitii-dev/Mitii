@@ -10,6 +10,11 @@ import { saveRuntimeGateCheckpoint } from "../checkpoint/SaveRuntimeGateCheckpoi
 import { assembleFinishMemoryCommit } from "./AssembleFinishMemoryCommit";
 import { buildPendingApprovalFromStore } from "./BuildPendingApprovalFromStore";
 import type { RuntimeParityFields } from "./AssembleRuntimeParityFields";
+import {
+  formatVerifyNote,
+  mergeAnswerWithLeftover,
+  sliceProgressFields,
+} from "./SliceProgressFields";
 import type { RuntimeDecisionSketch } from "../../flow/steps/5-Decide";
 import type { VerifyFinishSketch } from "../../flow/steps/11-VerifyFinish";
 import {
@@ -21,93 +26,13 @@ import { pushRuntimeProgressEvents } from "../events/PushRuntimeProgressEvents";
 import type { RuntimeEventSink } from "../events/RuntimeEventChannel";
 import { buildRuntimeUsageSketch } from "../usage/BuildRuntimeUsageSketch";
 import type { TaskList } from "../../../modules/task-list";
-import { buildSliceProgressHandoff } from "../task/BuildSliceProgressHandoff";
 import { finalizeCampaignSliceOnFinish } from "../task/FinalizeCampaignSliceOnFinish";
 import { hasOpenExecutionChecklist } from "../task/HydrateStartTaskList";
-import {
-  clearOrRestoreAfterVerifyPass,
-  isVerifyRepairDesk,
-  sealVerifyRepairDesk,
-  shouldSealVerifyRepairDesk,
-} from "../task/SealVerifyRepairDesk";
+import { applyFinishDeskPolicy } from "../task/ApplyFinishDeskPolicy";
+import { shouldSealVerifyRepairDesk } from "../task/SealVerifyRepairDesk";
 import { extractAgentVerifyEvidence } from "../task/SummarizeAgentVerifyEvidence";
 
 type UsageSketch = ReturnType<typeof buildRuntimeUsageSketch>;
-
-function formatVerifyNote(input: {
-  ranVerify?: boolean;
-  runnerStatus?: string;
-  reasonCodes?: readonly string[];
-  agentEvidence?: string;
-}): string | undefined {
-  if (input.agentEvidence?.trim()) {
-    return input.agentEvidence.trim();
-  }
-  if (!input.ranVerify) {
-    return "Not required this turn";
-  }
-  switch (input.runnerStatus) {
-    case "passed":
-      return "Passed";
-    case "failed":
-      return "Failed";
-    case "skipped":
-      return "Skipped";
-    case "unavailable":
-      if (input.reasonCodes?.includes("verification_runner_inline")) {
-        return "Finish-phase verify stub only — no checks executed";
-      }
-      if (input.reasonCodes?.includes("verification_runner_needs_input")) {
-        return "Finish-phase verify lacked workspace pin/input";
-      }
-      return "Finish-phase verify unavailable — use a selective test command";
-    case "blocked":
-      return "Blocked";
-    case "repair_requested":
-    case "repair_capped":
-      return `Needs repair (${input.runnerStatus})`;
-    default:
-      if (input.reasonCodes?.includes("verification_runner_inline")) {
-        return "Finish-phase verify stub only — no checks executed";
-      }
-      return "Finish-phase verify ran without a clear result";
-  }
-}
-
-function sliceProgressFields(store: {
-  getSlice: <T>(key: string) => T | undefined;
-}, options?: {
-  appendLeftover?: boolean;
-  advancedThisTurnIds?: readonly string[];
-  changedFiles?: readonly string[];
-  verifyNote?: string;
-}) {
-  const planArtifact = store.getSlice<Record<string, unknown>>("planArtifact");
-  const taskList = store.getSlice<TaskList>("taskList");
-  const completedPlanStepIds = store.getSlice<string[]>("completedPlanStepIds");
-  const nextPlanPhaseOffer = store.getSlice<string>("nextPlanPhaseOffer");
-  const handoff = buildSliceProgressHandoff({
-    ...(planArtifact ? { plan: planArtifact } : {}),
-    ...(taskList ? { taskList } : {}),
-    ...(completedPlanStepIds ? { completedPlanStepIds } : {}),
-    ...(typeof nextPlanPhaseOffer === "string"
-      ? { nextPlanPhaseOffer }
-      : {}),
-    appendLeftover: options?.appendLeftover === true,
-    ...(options?.advancedThisTurnIds?.length
-      ? { advancedThisTurnIds: options.advancedThisTurnIds }
-      : {}),
-    ...(options?.changedFiles?.length
-      ? { changedFiles: options.changedFiles }
-      : {}),
-    ...(options?.verifyNote ? { verifyNote: options.verifyNote } : {}),
-  });
-  return {
-    ...(planArtifact ? { plan: planArtifact } : {}),
-    ...(taskList ? { taskList } : {}),
-    ...handoff,
-  };
-}
 
 export async function assembleRuntimeStartResult(input: {
   start: RuntimeStartInput;
@@ -423,52 +348,28 @@ export async function assembleRuntimeStartResult(input: {
   const sealRepair = shouldSealVerifyRepairDesk({
     ...(agentEvidence ? { agentEvidence } : {}),
     ...(runnerStatus ? { runnerStatus } : {}),
+    ...(runnerCodes.length > 0 ? { runnerReasonCodes: runnerCodes } : {}),
   });
   const verifyPassed =
     agentEvidence?.outcome === "passed" || runnerStatus === "passed";
 
-  const deskReasonCodes: string[] = [];
-  if (mode === "agent" && sealRepair) {
-    const currentDesk = through.store.getSlice<TaskList>("taskList");
-    if (currentDesk && !isVerifyRepairDesk(currentDesk)) {
-      through.store.setSlice("priorExecutionTaskList", currentDesk);
-    }
-    const failureNote =
-      agentEvidence?.note ??
-      (runnerStatus
-        ? `Verification ${runnerStatus}`
-        : "Verification failed");
-    through.store.setSlice(
-      "taskList",
-      sealVerifyRepairDesk({
-        failureNote,
-        ...(agentEvidence?.command
-          ? { failedCommand: agentEvidence.command }
-          : {}),
-        ...(agentEvidence?.hint ? { hint: agentEvidence.hint } : {}),
-        ...(verify?.outcome?.checksRun?.length
-          ? { checksRun: verify.outcome.checksRun }
-          : {}),
-        ...(editsLanded ? { changedFiles } : {}),
-      }),
-    );
-    deskReasonCodes.push("tasklist_sealed_verify_repair");
-  } else if (mode === "agent" && verifyPassed) {
-    const currentDesk = through.store.getSlice<TaskList>("taskList");
-    if (isVerifyRepairDesk(currentDesk)) {
-      const restored = clearOrRestoreAfterVerifyPass({
-        current: currentDesk,
-        prior: through.store.getSlice<TaskList>("priorExecutionTaskList"),
-      });
-      if (restored.taskList) {
-        through.store.setSlice("taskList", restored.taskList);
-      }
-      through.store.setSlice("priorExecutionTaskList", undefined);
-      deskReasonCodes.push(...restored.reasonCodes);
-    }
-  }
+  const desk = applyFinishDeskPolicy({
+    store: through.store,
+    mode,
+    sealRepair,
+    verifyPassed,
+    finishStatus,
+    ...(agentEvidence ? { agentEvidence } : {}),
+    ...(runnerStatus ? { runnerStatus } : {}),
+    ...(runnerCodes.length > 0 ? { runnerReasonCodes: runnerCodes } : {}),
+    ...(verify?.outcome?.checksRun?.length
+      ? { checksRun: verify.outcome.checksRun }
+      : {}),
+    changedFiles,
+    editsLanded,
+    ...(trimmed ? { answer: trimmed } : {}),
+  });
 
-  // Do not mark the implementation slice done when verify failed — repair desk owns next.
   const campaignFinalize =
     finishStatus === "completed" && mode === "agent" && !sealRepair
       ? finalizeCampaignSliceOnFinish({
@@ -488,8 +389,6 @@ export async function assembleRuntimeStartResult(input: {
     ...(agentEvidence?.note ? { agentEvidence: agentEvidence.note } : {}),
   });
   const progressFields = sliceProgressFields(through.store, {
-    // Always offer next-slice handoff when the desk still has open work after
-    // a completed agent turn that edited (or after finalize advanced a slice).
     appendLeftover:
       finishStatus === "completed" &&
       openAfter &&
@@ -500,23 +399,11 @@ export async function assembleRuntimeStartResult(input: {
     ...(editsLanded ? { changedFiles } : {}),
     verifyNote,
   });
-  const leftover = progressFields.leftoverAnswer;
-  const finalAnswer =
-    leftover && trimmed
-      ? /want me to start the next slice/i.test(trimmed) ||
-        /related work may still be open/i.test(trimmed) ||
-        /implementation of \*\*/i.test(trimmed) ||
-        /next we still have \*\*/i.test(trimmed) ||
-        /\|\s*\*\*Next\*\*\s*\|/i.test(trimmed)
-        ? trimmed
-        : `${trimmed}\n\n${leftover}`
-      : leftover && !trimmed
-        ? leftover
-        : trimmed;
   const {
-    leftoverAnswer: _leftoverAnswer,
+    leftoverAnswer,
     ...progressForResult
   } = progressFields;
+  const finalAnswer = mergeAnswerWithLeftover(trimmed, leftoverAnswer);
 
   const memory = await assembleFinishMemoryCommit({
     mode,
@@ -570,7 +457,7 @@ export async function assembleRuntimeStartResult(input: {
         ? ["runtime_slice_next_action"]
         : []),
       ...campaignFinalize.reasonCodes,
-      ...deskReasonCodes,
+      ...desk.reasonCodes,
       finishStatus === "completed"
         ? "runtime_start_completed"
         : `runtime_start_${finishStatus}`,

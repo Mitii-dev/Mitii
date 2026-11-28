@@ -27,6 +27,27 @@ describe("buildSliceProgressHandoff", () => {
     ],
   };
 
+  it("does not emit Continue from discovery desks", () => {
+    const handoff = buildSliceProgressHandoff({
+      taskList: {
+        schemaVersion: TASK_LIST_SCHEMA_VERSION,
+        source: "discovery",
+        purpose: "discovery",
+        title: "Investigating",
+        items: [
+          {
+            id: "find-entrypoint",
+            title: "Find relevant entrypoint",
+            status: "active",
+          },
+        ],
+      },
+      appendLeftover: true,
+    });
+    expect(handoff.nextAction).toBeUndefined();
+    expect(handoff.leftoverAnswer).toBeUndefined();
+  });
+
   it("builds progress + continue_checklist nextAction for open items", () => {
     const handoff = buildSliceProgressHandoff({
       plan: {
@@ -57,7 +78,7 @@ describe("buildSliceProgressHandoff", () => {
     });
     expect(handoff.nextAction).toEqual({
       kind: "continue_checklist",
-      prompt: "Continue with the next plan item: Add React cases",
+      prompt: "Continue with plan item 2/2: Add React cases",
     });
     expect(handoff.completedPlanStepIds).toEqual(["s1"]);
     expect(handoff.leftoverAnswer).toMatch(
@@ -132,6 +153,35 @@ describe("buildSliceProgressHandoff", () => {
       nextPlanPhaseOffer: "## Next phase available\n\n- B) Scope B",
     });
     expect(handoff.nextAction?.kind).toBe("next_campaign_scope");
+  });
+
+  it("keeps repair continue_checklist even when nextPlanPhaseOffer is set", () => {
+    const handoff = buildSliceProgressHandoff({
+      taskList: {
+        schemaVersion: TASK_LIST_SCHEMA_VERSION,
+        source: "agent",
+        purpose: "execution",
+        title: "Verification repair",
+        items: [
+          {
+            id: "repair_fix",
+            title: "Address verification failures: node --test a.js",
+            status: "active",
+          },
+          {
+            id: "repair_reverify",
+            title: "Re-run verification for this change set",
+            status: "pending",
+          },
+        ],
+      },
+      nextPlanPhaseOffer: "## Next phase available\n\n- B) Scope B",
+    });
+    expect(handoff.nextAction).toEqual({
+      kind: "continue_checklist",
+      prompt:
+        "Continue with verification repair: Address verification failures: node --test a.js",
+    });
   });
 
   it("formatOpenChecklistLeftoverAnswer is empty when nothing open", () => {

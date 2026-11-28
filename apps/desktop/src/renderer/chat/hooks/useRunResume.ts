@@ -18,7 +18,10 @@ import type { useEngineLifecycle } from '../../shell/hooks/useEngineLifecycle.js
 import type { useRunStream } from './useRunStream.js';
 import type { useShellUiState } from '../../shell/hooks/useShellUiState.js';
 import type { useChatPersistence } from './useChatPersistence.js';
-import { stripContinueCtaFromAnswer } from '../../../shared/fileChanges.js';
+import {
+  extractContinueOffer,
+  stripContinueCtaFromAnswer,
+} from '../../../shared/fileChanges.js';
 
 export function useRunResume(deps: Pick<
     ReturnType<typeof useEngineSnapshot>,
@@ -217,8 +220,10 @@ export function useRunResume(deps: Pick<
                 : (fileChanges?.files.map((file) => file.path) ?? []),
           });
         }
+        const offerNextActionPrompt =
+          resultNextActionPrompt ?? extractContinueOffer(assistant);
         const hasOpenSliceWork =
-          Boolean(resultNextActionPrompt) ||
+          Boolean(offerNextActionPrompt) ||
           (typeof resultPendingCount === 'number' && resultPendingCount > 0) ||
           Boolean(
             resultTaskList?.items.some(
@@ -264,8 +269,8 @@ export function useRunResume(deps: Pick<
         if (resultCompletedIds?.length) {
           setCompletedPlanStepIds(new Set(resultCompletedIds));
         }
-        if (resultNextActionPrompt) {
-          setPendingNextActionPrompt(resultNextActionPrompt);
+        if (offerNextActionPrompt) {
+          setPendingNextActionPrompt(offerNextActionPrompt);
         } else if (!hasOpenSliceWork) {
           setPendingNextActionPrompt(null);
         }
@@ -280,8 +285,8 @@ export function useRunResume(deps: Pick<
             ...(resultCompletedIds?.length
               ? { completedPlanStepIds: resultCompletedIds }
               : {}),
-            ...(resultNextActionPrompt
-              ? { pendingNextActionPrompt: resultNextActionPrompt }
+            ...(offerNextActionPrompt
+              ? { pendingNextActionPrompt: offerNextActionPrompt }
               : hasOpenSliceWork
                 ? {}
                 : { pendingNextActionPrompt: null }),
@@ -293,8 +298,8 @@ export function useRunResume(deps: Pick<
             ...(resultCompletedIds?.length
               ? { completedPlanStepIds: resultCompletedIds }
               : {}),
-            ...(resultNextActionPrompt
-              ? { pendingNextActionPrompt: resultNextActionPrompt }
+            ...(offerNextActionPrompt
+              ? { pendingNextActionPrompt: offerNextActionPrompt }
               : {}),
           };
         }

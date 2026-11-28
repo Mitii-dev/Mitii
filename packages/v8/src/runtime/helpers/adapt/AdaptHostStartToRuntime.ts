@@ -3,6 +3,7 @@ import {
   type RuntimeStartInput,
 } from "../../contracts/input/RuntimeStartInput";
 import type { RuntimeSituationSnapshot } from "../../contracts/input/RuntimeSituationSnapshot";
+import { isInternalHostPath } from "../orient/IsInternalHostPath";
 
 /**
  * Loose host / AgentEngineStartInput-shaped bag accepted by the runtime shell.
@@ -27,8 +28,11 @@ export interface HostStartLoose {
     mode?: string;
     conversation?: Array<{ role?: string; content?: string }>;
     sessionId?: string;
+    referencedArtifacts?: Array<{ path?: string; name?: string }>;
   };
   conversation?: Array<{ role?: string; content?: string }>;
+  /** Explicit composer pins (SDK `pinnedPaths`). */
+  pinnedPaths?: string[];
   workspaceRoot?: string;
   host?: RuntimeStartInput["host"];
   history?: RuntimeStartInput["history"];
@@ -94,6 +98,31 @@ function digestConversation(
     compactedTurns: userTurns,
     digest: tail.slice(0, 2000),
   };
+}
+
+function collectPinnedPaths(input: HostStartLoose): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (raw: string | undefined) => {
+    if (!raw) return;
+    const normalized = raw
+      .replace(/\\/g, "/")
+      .replace(/^@/, "")
+      .replace(/\/+$/, "")
+      .trim();
+    if (!normalized || isInternalHostPath(normalized)) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(normalized);
+  };
+  for (const path of input.pinnedPaths ?? []) {
+    push(typeof path === "string" ? path : undefined);
+  }
+  for (const artifact of input.request?.referencedArtifacts ?? []) {
+    push(artifact.path ?? artifact.name);
+  }
+  return out.slice(0, 32);
 }
 
 function normalizeConversation(
@@ -211,6 +240,9 @@ export function adaptHostStartToRuntime(
   ].filter((id, i, all) => id.length > 0 && all.indexOf(id) === i);
 
   const userSafetyRuleIds = extractUserSafetyRuleIds(input.userSafetyRules);
+  const pinnedPaths = collectPinnedPaths(input);
+  // Keep the user message intact for Decide / continue signals. Pins travel
+  // as structured `pinnedPaths` into Orient + Briefcase (MapSketch).
 
   const start = runtimeStartInputSchema.parse({
     runId: input.runId,
@@ -231,6 +263,7 @@ export function adaptHostStartToRuntime(
           mcpServerIds: input.mcpServerIds ?? input.requiredMcpServerIds,
         }
       : {}),
+    ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
     ...(hasHost
       ? {
           host: {

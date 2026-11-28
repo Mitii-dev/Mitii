@@ -8,6 +8,7 @@ import {
   type ContextBundle,
 } from "../../contracts/enrich/ContextBundle";
 import type { SituationPack } from "../../contracts/orient/SituationPack";
+import { isInternalHostPath } from "../orient/IsInternalHostPath";
 
 export interface BuildFullContextBundleInput {
   pack?: SituationPack;
@@ -20,6 +21,8 @@ export interface BuildFullContextBundleInput {
   memoryFacts?: readonly string[];
   repoSlices?: readonly string[];
   projectRulesText?: string;
+  /** Explicit composer pins (not dirty-tree noise). */
+  pinnedPaths?: readonly string[];
   /** S13 Briefcase peaks from selectBriefcaseHandoffPeaks. */
   handoffPeaks?: {
     activeTaskId?: string;
@@ -35,12 +38,20 @@ export function buildFullContextBundle(
   input: BuildFullContextBundleInput,
 ): ContextBundle {
   const focusPaths = input.pack?.scope.focusPaths ?? [];
+  const pinnedPaths = [
+    ...new Set(
+      (input.pinnedPaths ?? [])
+        .map((path) => path.replace(/\\/g, "/").replace(/\/+$/, "").trim())
+        .filter((path) => path.length > 0 && !isInternalHostPath(path)),
+    ),
+  ].slice(0, 32);
   const route = input.route ?? "unknown";
   const grantProfile = input.grantProfile ?? "none";
   const skillItems = [...(input.skillInstructions ?? [])].slice(0, 16);
   const memoryItems = [...(input.memoryFacts ?? [])].slice(0, 24);
   const repoItems = [
     ...(input.repoSlices ?? []),
+    ...pinnedPaths.slice(0, 8),
     ...focusPaths.slice(0, 8),
     ...(input.pack?.navigation?.surroundings ?? []).slice(0, 8),
   ];
@@ -55,6 +66,9 @@ export function buildFullContextBundle(
   const summary = [
     `route=${route}`,
     `grant=${grantProfile}`,
+    pinnedPaths.length > 0
+      ? `pinned=${pinnedPaths.slice(0, 6).join(",")}`
+      : "pinned=none",
     focusPaths.length > 0
       ? `focus=${focusPaths.slice(0, 6).join(",")}`
       : "focus=none",
@@ -64,6 +78,7 @@ export function buildFullContextBundle(
 
   const reasonCodes = [
     "enrich_full_bundle",
+    ...(pinnedPaths.length > 0 ? ["enrich_pinned_paths"] : []),
     ...(skillItems.length > 0 ? ["enrich_skills_attached"] : []),
     ...(memoryItems.length > 0 ? ["enrich_memory_attached"] : []),
     ...(uniqueRepo.length > 0 ? ["enrich_repo_attached"] : []),
@@ -75,6 +90,7 @@ export function buildFullContextBundle(
     schemaVersion: 1,
     summary,
     focusPaths,
+    pinnedPaths,
     route,
     grantProfile,
     enrichMode: "full",

@@ -82,6 +82,7 @@ export function enrichContext(
     memoryFacts: opts?.memoryFacts,
     repoSlices: opts?.repoSlices,
     projectRulesText: opts?.projectRulesText,
+    pinnedPaths: ctx.input.pinnedPaths ?? [],
     taskListPresent: Boolean(taskList),
     planRef: ctx.store.getSlice<{ id?: string }>("planArtifact")?.id,
     handoffPeaks: peaks,

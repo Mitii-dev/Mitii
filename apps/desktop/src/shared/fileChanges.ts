@@ -18,6 +18,42 @@ export const PROCESS_MUTATION_TOOLS = new Set([
 /** Max paths to fetch diffs / show in the expandable list. */
 export const FILE_CHANGES_DISPLAY_CAP = 40;
 
+/**
+ * Host / VCS / harness internals — never treat as agent product edits.
+ * Mirrors v8 `isInternalHostPath` (apps may not deep-import runtime helpers).
+ */
+export function isHostInternalChangePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  if (!normalized) return true;
+  if (
+    normalized === '.mitii' ||
+    normalized.startsWith('.mitii/') ||
+    normalized === '.git' ||
+    normalized.startsWith('.git/') ||
+    normalized === 'node_modules' ||
+    normalized.startsWith('node_modules/')
+  ) {
+    return true;
+  }
+  return isEphemeralWorkspacePath(normalized);
+}
+
+/**
+ * Scratch / temp / debug artifacts created by tests or local harnesses.
+ * Matches path segments like `.scratch`, `.tmp-foo`, `.debug-bar.mjs`.
+ */
+export function isEphemeralWorkspacePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  if (!normalized) return true;
+  return normalized.split('/').some((part) => {
+    if (!part) return false;
+    if (part === '.scratch' || part.startsWith('.scratch.')) return true;
+    if (part.startsWith('.tmp-') || part.startsWith('.tmp.')) return true;
+    if (part.startsWith('.debug-') || part.startsWith('.debug.')) return true;
+    return false;
+  });
+}
+
 export interface DesktopFileChangeEntry {
   path: string;
   status: 'A' | 'M' | 'D' | '?';
@@ -54,12 +90,12 @@ export function collectAgentCausedPaths(input: {
   const write = new Set(
     input.writePaths
       .map((path) => path.replace(/\\/g, '/').trim())
-      .filter((path) => path.length > 0),
+      .filter((path) => path.length > 0 && !isHostInternalChangePath(path)),
   );
   const before = new Map<string, number | undefined>();
   for (const row of input.beforeDirty) {
     const path = row.path.replace(/\\/g, '/').trim();
-    if (path) before.set(path, row.mtimeMs);
+    if (path && !isHostInternalChangePath(path)) before.set(path, row.mtimeMs);
   }
   const since =
     typeof input.sinceMs === 'number' && Number.isFinite(input.sinceMs)
@@ -70,7 +106,7 @@ export function collectAgentCausedPaths(input: {
   const beforeEmpty = before.size === 0;
   for (const row of input.afterDirty) {
     const path = row.path.replace(/\\/g, '/').trim();
-    if (!path) continue;
+    if (!path || isHostInternalChangePath(path)) continue;
     if (write.has(path)) {
       caused.add(path);
       continue;
@@ -227,7 +263,13 @@ export function collectMutatedPathsFromEvent(event: unknown): string[] {
     }
     return path.includes('.') || path.endsWith('/');
   });
-  return [...new Set([...fromPreview, ...cleanedSummary])].slice(0, 64);
+  return [
+    ...new Set(
+      [...fromPreview, ...cleanedSummary].filter(
+        (path) => !isHostInternalChangePath(path),
+      ),
+    ),
+  ].slice(0, 64);
 }
 
 /** True when a completed process tool may have materialized workspace files. */
@@ -267,12 +309,27 @@ export function inferStatusFromDiff(
   return fallback;
 }
 
+/** Trailing prose CTA that should become the Continue button instead. */
+const CONTINUE_CTA_RE =
+  /\n*(?:Want me to[\s\S]*?\?\s*)?Say\s+\*{0,2}continue\*{0,2}\b[^\n]*$/i;
+
 /** Drop leftover Continue CTA when a dedicated Continue bar is shown. */
 export function stripContinueCtaFromAnswer(text: string): string {
-  return text
-    .replace(
-      /\n*Want me to start the next slice\?\s*Say \*\*continue\*\*\.?\s*$/i,
-      '',
-    )
-    .trimEnd();
+  return text.replace(CONTINUE_CTA_RE, '').trimEnd();
+}
+
+/**
+ * When the model ends with “Say continue” but runtime sent no nextAction,
+ * lift that into a Continue-bar prompt so the user does not have to type it.
+ * Prompt is shaped so Decide routes to execute (not repository_answer).
+ */
+export function extractContinueOffer(answer: string): string | undefined {
+  const sayMatch = answer.match(/Say\s+\*{0,2}continue\*{0,2}\b/i);
+  if (!sayMatch || sayMatch.index === undefined) return undefined;
+  const before = answer.slice(0, sayMatch.index);
+  const want = before.match(/Want me to\s+([\s\S]+?)\?\s*$/i)?.[1];
+  const detail = want?.replace(/\s+/g, ' ').replace(/\s+next$/i, '').trim();
+  if (!detail) return 'Continue with the next step.';
+  const capitalized = detail.charAt(0).toUpperCase() + detail.slice(1);
+  return `Continue with the next step: ${capitalized}`;
 }

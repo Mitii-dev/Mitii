@@ -112,6 +112,43 @@ export function mapSketchToPromptConstructionInput(input: {
   };
 
   const taskFmt = formatTaskListForBriefcase(input.taskList);
+  const pinnedPaths = input.contextBundle?.pinnedPaths ?? [];
+  const focusPaths = input.contextBundle?.focusPaths ?? [];
+  const repoItems = input.contextBundle?.repoContext?.items ?? [];
+  const environmentParts: string[] = [];
+  if (pinnedPaths.length > 0) {
+    environmentParts.push(
+      `User pinned these paths for this turn:\n${pinnedPaths
+        .slice(0, 32)
+        .map((path) => `- ${path}`)
+        .join("\n")}`,
+    );
+  }
+  const extraFocus = focusPaths.filter(
+    (path) =>
+      !pinnedPaths.some(
+        (pin) =>
+          pin === path || path.startsWith(`${pin}/`) || pin.startsWith(`${path}/`),
+      ),
+  );
+  if (extraFocus.length > 0) {
+    environmentParts.push(
+      `Other focus (not pins):\n${extraFocus
+        .slice(0, 16)
+        .map((path) => `- ${path}`)
+        .join("\n")}`,
+    );
+  }
+  const environment =
+    environmentParts.length > 0
+      ? [
+          {
+            id: "pinned_focus_paths",
+            content: environmentParts.join("\n\n"),
+            priority: 20,
+          },
+        ]
+      : undefined;
   const instructions = {
     ...(input.contextBundle?.projectRules?.text
       ? {
@@ -134,7 +171,42 @@ export function mapSketchToPromptConstructionInput(input: {
       content,
       priority: 80,
     })),
+    ...(environment ? { environment } : {}),
   };
+
+  const repoBlocks = [
+    ...pinnedPaths.slice(0, 16).map((path, index) => ({
+      id: `pin_${index}`,
+      relativePath: path,
+      content: `User-pinned path: ${path}`,
+      priority: 10 + index,
+      truncated: false,
+      omittedCharacters: 0,
+    })),
+    ...extraFocus.slice(0, 12).map((path, index) => ({
+      id: `focus_${index}`,
+      relativePath: path,
+      content: `Focus path: ${path}`,
+      priority: 40 + index,
+      truncated: false,
+      omittedCharacters: 0,
+    })),
+    ...repoItems.slice(0, 16).map((item, index) => ({
+      id: `repo_${index}`,
+      relativePath: item.slice(0, 200) || `repo_${index}`,
+      content: item,
+      priority: 80 + index,
+      truncated: false,
+      omittedCharacters: 0,
+    })),
+  ];
+  const repositoryContext =
+    repoBlocks.length > 0
+      ? {
+          stateToken: `runtime-focus:${(pinnedPaths[0] ?? focusPaths[0] ?? "repo").slice(0, 64)}`,
+          blocks: repoBlocks,
+        }
+      : undefined;
 
   const planText = taskFmt.promptBlock;
   const tokens = Math.max(4_096, input.contextWindowTokens ?? 80_000);
@@ -151,6 +223,7 @@ export function mapSketchToPromptConstructionInput(input: {
       content: m.content,
     })),
     instructions,
+    ...(repositoryContext ? { repositoryContext } : {}),
     ...(input.contextBundle?.decisionBrief
       ? { decisionBriefText: input.contextBundle.decisionBrief }
       : {}),

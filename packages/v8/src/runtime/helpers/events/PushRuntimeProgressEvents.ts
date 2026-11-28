@@ -1,3 +1,4 @@
+import type { PromptBudgetSketch } from "../store/PackTurn";
 import type { RuntimeEventSink } from "./RuntimeEventChannel";
 
 type ProgressRoute =
@@ -36,6 +37,9 @@ export function pushRuntimeProgressEvents(
       | "prompt_ready"
       | "verifying";
     route?: string;
+    /** Real PromptConstruction budget — required for host Context Usage bars. */
+    promptBudget?: PromptBudgetSketch;
+    promptStatus?: "complete" | "partial" | "blocked";
   },
 ): void {
   if (!sink) return;
@@ -76,12 +80,59 @@ export function pushRuntimeProgressEvents(
   }
 
   if (phase === "prompt_ready") {
+    const budget = params.promptBudget;
     sink.push({
       type: "prompt_ready",
       runId,
-      status: "complete",
-      totalOmittedTokens: 0,
-      totalTruncatedTokens: 0,
+      status: params.promptStatus ?? "complete",
+      totalOmittedTokens: budget?.totalOmittedTokens ?? 0,
+      totalTruncatedTokens: budget?.totalTruncatedTokens ?? 0,
+      ...(budget
+        ? {
+            budget: {
+              contextWindowTokens: budget.contextWindowTokens,
+              outputReservedTokens: budget.outputReservedTokens,
+              inputBudgetTokens: budget.inputBudgetTokens,
+              totalUsedTokens: budget.totalUsedTokens,
+              withinLimits: budget.withinLimits,
+              sections: budget.sections.slice(0, 16).map((section) => ({
+                section: section.section,
+                allocatedTokens: section.allocatedTokens,
+                usedTokens: section.usedTokens,
+                omittedTokens: section.omittedTokens,
+                truncatedTokens: section.truncatedTokens,
+              })),
+            },
+            window: {
+              toolSchemaTokens:
+                budget.sections.find((s) => s.section === "tools")
+                  ?.allocatedTokens ?? 0,
+              usableInputTokens: budget.inputBudgetTokens,
+              repositoryTokens:
+                budget.sections.find((s) => s.section === "repository")
+                  ?.allocatedTokens ?? 0,
+              conversationTokens:
+                budget.sections.find((s) => s.section === "conversation")
+                  ?.allocatedTokens ?? 0,
+              planTokens:
+                budget.sections.find((s) => s.section === "plan")
+                  ?.allocatedTokens ?? 0,
+              planUsedTokens:
+                budget.sections.find((s) => s.section === "plan")?.usedTokens ??
+                0,
+              skillsTokens:
+                budget.sections.find((s) => s.section === "skills")
+                  ?.allocatedTokens ?? 0,
+              systemTokens:
+                (budget.sections.find((s) => s.section === "system")
+                  ?.allocatedTokens ?? 0) +
+                (budget.sections.find((s) => s.section === "rules")
+                  ?.allocatedTokens ?? 0) +
+                (budget.sections.find((s) => s.section === "memory")
+                  ?.allocatedTokens ?? 0),
+            },
+          }
+        : {}),
       at,
     });
     return;

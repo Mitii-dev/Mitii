@@ -84,11 +84,8 @@ export async function runThroughTurnLoop(input: {
     at: new Date().toISOString(),
     phase: "context_ready",
   });
-  pushRuntimeProgressEvents(sink, {
-    runId,
-    at: new Date().toISOString(),
-    phase: "prompt_ready",
-  });
+  // prompt_ready with real budget is emitted after briefcase pack inside
+  // turnLoopWithPorts — avoid an empty stub that blanks the Context Usage UI.
 
   const turnLoop =
     input.deps?.model != null

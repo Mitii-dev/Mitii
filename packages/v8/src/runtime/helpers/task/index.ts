@@ -28,7 +28,10 @@ export {
   isVerifyRepairDesk,
   sealVerifyRepairDesk,
   shouldSealVerifyRepairDesk,
+  updateVerifyRepairDeskOnFail,
   VERIFY_REPAIR_DESK_TITLE,
   REPAIR_FIX_ID,
   REPAIR_REVERIFY_ID,
 } from "./SealVerifyRepairDesk";
+export { applyFinishDeskPolicy } from "./ApplyFinishDeskPolicy";
+export type { FinishDeskStore } from "./ApplyFinishDeskPolicy";

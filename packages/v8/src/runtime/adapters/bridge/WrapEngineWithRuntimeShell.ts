@@ -38,6 +38,9 @@ export function wrapEngineWithRuntimeShell<T extends RuntimeShellEngineSurface>(
   >();
 
   const start = (input: AgentEngineStartInput): AgentRunHandle => {
+    const referencedPins = (input.request?.referencedArtifacts ?? [])
+      .map((artifact) => artifact.path?.trim() || artifact.name?.trim() || "")
+      .filter((path) => path.length > 0);
     const adapted = adaptHostStartToRuntime({
       ...input,
       dirtyPaths: input.dirtyPaths,
@@ -50,6 +53,7 @@ export function wrapEngineWithRuntimeShell<T extends RuntimeShellEngineSurface>(
       runtimeSituation: input.runtimeSituation,
       instructions: input.instructions,
       userSafetyRules: input.userSafetyRules,
+      ...(referencedPins.length > 0 ? { pinnedPaths: referencedPins } : {}),
       host: {
         dirtyPaths: [
           ...(input.dirtyPaths ?? []),

@@ -1,4 +1,7 @@
 import type { ContextBundle } from "../../contracts/enrich/ContextBundle";
+import type {
+  PromptSection,
+} from "../../../modules/prompt-construction";
 import type { TaskList } from "../../../modules/task-list";
 import { toModelToolSurface } from "../../tools/ToModelToolSurface";
 import type { GrantSurface } from "../../tools/CheckToolAgainstGrant";
@@ -29,6 +32,24 @@ export interface PackTurnInput {
   supportsPromptCaching?: boolean;
 }
 
+/** Safe prompt-budget snapshot for host token meters (`prompt_ready`). */
+export type PromptBudgetSketch = {
+  contextWindowTokens: number;
+  outputReservedTokens: number;
+  inputBudgetTokens: number;
+  totalUsedTokens: number;
+  totalOmittedTokens: number;
+  totalTruncatedTokens: number;
+  withinLimits: boolean;
+  sections: Array<{
+    section: PromptSection;
+    allocatedTokens: number;
+    usedTokens: number;
+    omittedTokens: number;
+    truncatedTokens: number;
+  }>;
+};
+
 export interface ModelRequestSketch {
   systemPrefix: string;
   messages: Array<{ role: string; content: string }>;
@@ -37,6 +58,9 @@ export interface ModelRequestSketch {
   briefcaseSlots?: BriefcaseSlots;
   cacheBreakpoints?: CacheBreakpointMark[];
   promptCacheCapability?: PromptCacheCapability;
+  /** Present when packed via PromptConstruction. */
+  promptBudget?: PromptBudgetSketch;
+  promptStatus?: "complete" | "partial" | "blocked";
   reasonCodes: string[];
 }
 

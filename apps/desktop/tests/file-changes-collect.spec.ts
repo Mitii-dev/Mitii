@@ -4,6 +4,9 @@ import {
   capPathsForFileChangesDisplay,
   collectAgentCausedPaths,
   collectMutatedPathsFromEvent,
+  extractContinueOffer,
+  isEphemeralWorkspacePath,
+  isHostInternalChangePath,
   isSuccessfulProcessMutationEvent,
   parsePathsFromToolOutputPreview,
   stripContinueCtaFromAnswer,
@@ -77,6 +80,22 @@ describe('collectAgentCausedPaths', () => {
     );
   });
 
+  it('ignores .mitii host internals even when newly dirty', () => {
+    const paths = collectAgentCausedPaths({
+      writePaths: [],
+      beforeDirty: [],
+      afterDirty: [
+        { path: '.mitii', mtimeMs: 9000 },
+        { path: '.mitii/logs/session.jsonl', mtimeMs: 9000 },
+        { path: 'packages/checks/src/a.js', mtimeMs: 9000 },
+      ],
+      sinceMs: 1000,
+    });
+    expect(paths).toContain('packages/checks/src/a.js');
+    expect(paths).not.toContain('.mitii');
+    expect(paths.every((path) => !path.startsWith('.mitii'))).toBe(true);
+  });
+
   it('caps display paths and reports truncation', () => {
     const many = Array.from({ length: 50 }, (_, i) => `f${i}.ts`);
     const capped = capPathsForFileChangesDisplay(many, 40);
@@ -110,5 +129,52 @@ describe('process mutation + continue CTA helpers', () => {
     );
     expect(text).toBe('Done work.');
     expect(text).not.toMatch(/continue/i);
+  });
+
+  it('extracts continue offer from prose CTA without nextAction', () => {
+    const answer =
+      "What's left\n\nWant me to apply this and run `pnpm case:validate` next? Say **continue**.";
+    expect(extractContinueOffer(answer)).toBe(
+      'Continue with the next step: Apply this and run `pnpm case:validate`',
+    );
+    expect(stripContinueCtaFromAnswer(answer)).toBe("What's left");
+  });
+
+  it('extracts continue offer when Say continue has a trailing clause', () => {
+    const answer =
+      'Want me to continue with that broader audit next? Say **continue** and I’ll apply the same cleanup.';
+    expect(extractContinueOffer(answer)).toMatch(
+      /^Continue with the next step: Continue with that broader audit/,
+    );
+    expect(stripContinueCtaFromAnswer(answer)).toBe('');
+  });
+
+  it('drops test scratch/tmp/debug paths from product file changes', () => {
+    expect(isEphemeralWorkspacePath('packages/checks/test/.scratch')).toBe(
+      true,
+    );
+    expect(
+      isEphemeralWorkspacePath('packages/checks/test/.tmp-http-session'),
+    ).toBe(true);
+    expect(
+      isHostInternalChangePath('packages/checks/test/.debug-http-session.mjs'),
+    ).toBe(true);
+    expect(
+      isHostInternalChangePath('packages/checks/src/builtins/http.js'),
+    ).toBe(false);
+
+    const paths = collectAgentCausedPaths({
+      writePaths: [
+        'packages/checks/src/builtins/http.js',
+        'packages/checks/test/.tmp-http-session',
+        'packages/checks/test/.scratch',
+      ],
+      beforeDirty: [],
+      afterDirty: [
+        { path: 'packages/checks/test/.tmp-suite-lifecycle', mtimeMs: 9 },
+      ],
+      sinceMs: 1,
+    });
+    expect(paths).toEqual(['packages/checks/src/builtins/http.js']);
   });
 });

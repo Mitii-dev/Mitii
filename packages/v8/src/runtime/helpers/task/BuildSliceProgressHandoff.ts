@@ -179,6 +179,18 @@ export function formatOpenChecklistLeftoverAnswer(
   return lines.join("\n");
 }
 
+function isDiscoveryDesk(taskList: TaskList | undefined): boolean {
+  if (!taskList) return false;
+  return taskList.purpose === "discovery" || taskList.source === "discovery";
+}
+
+function isVerifyRepairDesk(taskList: TaskList | undefined): boolean {
+  if (!taskList?.items?.length) return false;
+  if (taskList.title === "Verification repair") return true;
+  const ids = new Set(taskList.items.map((item) => item.id));
+  return ids.has("repair_fix") && ids.has("repair_reverify");
+}
+
 export function buildSliceProgressHandoff(input: {
   plan?: Record<string, unknown>;
   taskList?: TaskList;
@@ -191,8 +203,12 @@ export function buildSliceProgressHandoff(input: {
   changedFiles?: readonly string[];
   verifyNote?: string;
 }): SliceProgressHandoff {
+  // Discovery is recon-only — never emit Continue from its canned rows.
+  const deskForContinue = isDiscoveryDesk(input.taskList)
+    ? undefined
+    : input.taskList;
   const stepIds = planStepIds(input.plan);
-  const fromDeskDone = doneItems(input.taskList)
+  const fromDeskDone = doneItems(deskForContinue)
     .map((item) => item.sourceRef?.trim() || item.id)
     .filter(Boolean);
   const completedIds = [
@@ -201,12 +217,12 @@ export function buildSliceProgressHandoff(input: {
       ...fromDeskDone,
     ]),
   ];
-  const open = openItems(input.taskList);
+  const open = openItems(deskForContinue);
   const openTitles = open
     .map((item) => item.title?.trim() || item.id)
     .filter((title) => title.length > 0)
     .slice(0, 6);
-  const doneCount = doneItems(input.taskList).length;
+  const doneCount = doneItems(deskForContinue).length;
   const pendingCount = open.length;
   const next = open[0];
   const planTotalCount =
@@ -217,7 +233,7 @@ export function buildSliceProgressHandoff(input: {
       : doneCount;
 
   const hasProgress =
-    Boolean(input.taskList?.items.length) ||
+    Boolean(deskForContinue?.items.length) ||
     planTotalCount > 0 ||
     completedIds.length > 0;
 
@@ -241,22 +257,36 @@ export function buildSliceProgressHandoff(input: {
 
   let nextAction: RuntimeNextAction | undefined;
   const campaignOffer = input.nextPlanPhaseOffer?.trim();
-  if (campaignOffer) {
+  const repairing = isVerifyRepairDesk(deskForContinue);
+  if (repairing && pendingCount > 0 && next) {
+    // Repair desk owns Continue while open — do not surface campaign-scope CTA.
+    const title = (next.title?.trim() || next.id).slice(0, 160);
+    nextAction = {
+      kind: "continue_checklist",
+      prompt: `Continue with verification repair: ${title}`,
+    };
+  } else if (campaignOffer) {
     nextAction = {
       kind: "next_campaign_scope",
       prompt: "Say which remaining scope to tackle next.",
     };
   } else if (pendingCount > 0 && next) {
     const title = (next.title?.trim() || next.id).slice(0, 160);
+    const index = Math.max(1, doneCount + 1);
+    const total = Math.max(planTotalCount, doneCount + pendingCount);
+    const prompt =
+      total > 1
+        ? `Continue with plan item ${index}/${total}: ${title}`
+        : `Continue with the next plan item: ${title}`;
     nextAction = {
       kind: "continue_checklist",
-      prompt: `Continue with the next plan item: ${title}`,
+      prompt,
     };
   }
 
   const leftoverAnswer =
     input.appendLeftover && pendingCount > 0
-      ? formatOpenChecklistLeftoverAnswer(input.taskList, {
+      ? formatOpenChecklistLeftoverAnswer(deskForContinue, {
           advancedThisTurnIds: input.advancedThisTurnIds,
           ...(input.changedFiles?.length
             ? { changedFiles: input.changedFiles }

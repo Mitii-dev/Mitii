@@ -48,6 +48,30 @@ describe("ContextBundle enrich (S11)", () => {
     expect(bundle.reasonCodes).toContain("enrich_full_bundle");
   });
 
+  it("records explicit pins separately from focus noise", () => {
+    const bundle = buildFullContextBundle({
+      pack: {
+        schemaVersion: 1,
+        request: { text: "explain cases" },
+        scope: {
+          focusPaths: ["cases", "apps/desktop/src/a.ts"],
+          readHint: "folder",
+          evidence: "focus_only",
+          relatedSeeds: [],
+        },
+        navigation: { mentionedPaths: ["cases"], surroundings: [] },
+        omissions: {},
+        reasonCodes: [],
+      },
+      route: "diagnose",
+      grantProfile: "read",
+      pinnedPaths: ["cases", ".mitii"],
+    });
+    expect(bundle.pinnedPaths).toEqual(["cases"]);
+    expect(bundle.summary).toContain("pinned=cases");
+    expect(bundle.reasonCodes).toContain("enrich_pinned_paths");
+  });
+
   it("light refresh keeps stable skills/rules", () => {
     const full = buildFullContextBundle({
       route: "execute",

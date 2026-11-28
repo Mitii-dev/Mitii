@@ -216,6 +216,53 @@ describe("S3A-DISCOVER / S3A-TELEMETRY / S11-BRIEF PC", () => {
     );
   });
 
+  it("mapSketchToPromptConstructionInput surfaces focus paths to the model", () => {
+    const input = mapSketchToPromptConstructionInput({
+      message: "explain this",
+      decision: sampleDecision(),
+      contextBundle: {
+        schemaVersion: 1,
+        summary: "focus=packages/checks",
+        focusPaths: ["packages/checks", "apps/desktop"],
+        route: "repository_answer",
+        grantProfile: "readonly",
+        enrichMode: "full",
+        reasonCodes: [],
+      },
+    });
+    expect(input.instructions?.environment?.[0]?.content).toContain(
+      "packages/checks",
+    );
+    expect(input.instructions?.environment?.[0]?.content).toContain(
+      "Other focus (not pins)",
+    );
+    expect(input.repositoryContext?.blocks.some((b) => b.relativePath === "packages/checks")).toBe(
+      true,
+    );
+  });
+
+  it("mapSketch labels only pinnedPaths as user pins", () => {
+    const input = mapSketchToPromptConstructionInput({
+      message: "explain this",
+      decision: sampleDecision(),
+      contextBundle: {
+        schemaVersion: 1,
+        summary: "pinned=cases",
+        focusPaths: ["cases", "apps/desktop/src/a.ts"],
+        pinnedPaths: ["cases"],
+        route: "diagnose",
+        grantProfile: "readonly",
+        enrichMode: "full",
+        reasonCodes: [],
+      },
+    });
+    const env = input.instructions?.environment?.[0]?.content ?? "";
+    expect(env).toContain("User pinned these paths");
+    expect(env).toContain("- cases");
+    expect(env).toContain("Other focus (not pins)");
+    expect(env).toContain("apps/desktop/src/a.ts");
+  });
+
   it("plan pipeline emits discovery + telemetry on plan mode", async () => {
     const result = await runThroughPlanPipeline({
       start: {

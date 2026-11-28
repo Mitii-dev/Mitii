@@ -71,6 +71,15 @@ export function layoutBriefcaseSlots(
     semi.push(`planRef: ${bundle.planRef}`);
   }
 
+  const pinnedPaths = bundle.pinnedPaths ?? [];
+  if (pinnedPaths.length > 0) {
+    volatile.push(
+      `User pinned paths:\n${pinnedPaths
+        .slice(0, 16)
+        .map((path) => `- ${path}`)
+        .join("\n")}`,
+    );
+  }
   volatile.push(bundle.summary);
   if (bundle.repoContext?.items.length) {
     volatile.push(`repo: ${bundle.repoContext.items.join("\n")}`);

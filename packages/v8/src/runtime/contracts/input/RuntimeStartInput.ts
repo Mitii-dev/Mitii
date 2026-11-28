@@ -33,6 +33,12 @@ export const runtimeStartInputSchema = z
     requiredSkillIds: z.array(z.string().min(1)).max(32).optional(),
     /** Alias for mcpServerIds (host naming). */
     requiredMcpServerIds: z.array(z.string().min(1)).max(32).optional(),
+    /**
+     * Explicit file/folder pins from the host composer (@ attach / pin chips).
+     * Orient treats these as focus roots even when the user message is vague
+     * ("explain this").
+     */
+    pinnedPaths: z.array(z.string().min(1)).max(32).optional(),
     /** Host editor / workspace snapshot (S1-HOST). */
     host: z
       .object({

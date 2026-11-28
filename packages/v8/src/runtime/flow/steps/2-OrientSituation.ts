@@ -7,6 +7,7 @@ import {
   buildScopeVerdict,
   extractFocusPaths,
   extractIntentCues,
+  isInternalHostPath,
   resolveConfigNearFocus,
   resolveRelatedProjects,
   resolveWorkRoot,
@@ -27,13 +28,23 @@ export function orientSituation(ctx: StepContext): SituationPack {
   const catalog = ctx.input.catalog;
   const impact = ctx.input.impact;
 
+  // Host pins first — "explain this" with a pinned folder must orient there
+  // even when the message has no path tokens. Dirty/.mitii are focus noise,
+  // never labeled as pins downstream.
   const focusPaths = [
+    ...(ctx.input.pinnedPaths ?? []),
     ...extractFocusPaths(message),
     ...(host?.focusedFile ? [host.focusedFile] : []),
     ...(host?.selection?.path ? [host.selection.path] : []),
     ...(host?.dirtyPaths ?? []).slice(0, 8),
   ];
-  const uniqueFocus = [...new Set(focusPaths.filter((p) => p.length > 0))];
+  const uniqueFocus = [
+    ...new Set(
+      focusPaths
+        .map((path) => path.replace(/\\/g, "/").replace(/\/+$/, "").trim())
+        .filter((path) => path.length > 0 && !isInternalHostPath(path)),
+    ),
+  ];
   const intentCues = extractIntentCues(message);
   const workRoot = resolveWorkRoot({
     focusPaths: uniqueFocus,

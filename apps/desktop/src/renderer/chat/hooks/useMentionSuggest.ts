@@ -65,8 +65,9 @@ export function useMentionSuggest(deps: Pick<
     }
     setPinMenu(true);
     if (next.mode === 'all' || next.mode === 'path') {
-      if (!engine) {
+      if (!engine?.baseUrl) {
         setPathHits([]);
+        setSuggestLoading(false);
         return;
       }
       const req = ++searchReq.current;
